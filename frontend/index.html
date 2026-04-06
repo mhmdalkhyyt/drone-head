@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone Tracker</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <header>
+        <div class="logo">
+          <span class="logo-icon">🚁</span>
+          <span class="logo-text">Drone Tracker</span>
+        </div>
+        <div id="connection-badge" class="badge badge--connecting">Connecting…</div>
+      </header>
+
+      <!-- Hubs section -->
+      <div class="section-title">
+        Mission Hubs
+        <button id="btn-place-hub" class="btn-icon" title="Click to place a hub on the map">📍 Place Hub</button>
+      </div>
+      <ul id="hub-list"></ul>
+
+      <!-- Drone fleet overview -->
+      <div class="section-title" style="margin-top:12px;">Fleet Overview</div>
+      <ul id="drone-list"></ul>
+
+      <div class="section-title" style="margin-top:auto; padding-top:16px;">Add / Update Drone</div>
+      <form id="drone-form">
+        <div class="form-row">
+          <label>ID</label>
+          <input type="text" id="f-id"       placeholder="drone-4"  required />
+        </div>
+        <div class="form-row">
+          <label>Name</label>
+          <input type="text" id="f-name"     placeholder="Delta" />
+        </div>
+        <div class="form-row">
+          <label>Lat</label>
+          <input type="number" id="f-lat"    placeholder="59.3293" step="any" required />
+        </div>
+        <div class="form-row">
+          <label>Lng</label>
+          <input type="number" id="f-lng"    placeholder="18.0686" step="any" required />
+        </div>
+        <div class="form-row">
+          <label>Alt (m)</label>
+          <input type="number" id="f-alt"    placeholder="100" step="any" />
+        </div>
+        <div class="form-row">
+          <label>Speed</label>
+          <input type="number" id="f-speed"  placeholder="10" step="any" />
+        </div>
+        <div class="form-row">
+          <label>Battery %</label>
+          <input type="number" id="f-battery" placeholder="90" min="0" max="100" />
+        </div>
+        <div class="form-row">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="active">Active</option>
+            <option value="idle">Idle</option>
+            <option value="warning">Warning</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-primary">Send</button>
+      </form>
+    </aside>
+
+    <!-- ── Map ──────────────────────────────────────────────────────────── -->
+    <main id="map"></main>
+
+    <!-- ── Hub Panel (right drawer) ─────────────────────────────────────── -->
+    <div id="hub-panel" class="hub-panel hidden">
+      <div class="hub-panel__header">
+        <span id="hub-panel-title">Hub</span>
+        <button id="hub-panel-close" class="btn-icon-sm" title="Close">✕</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="hub-tabs">
+        <button class="hub-tab active" data-tab="fleets">Fleets</button>
+        <button class="hub-tab" data-tab="missions">Missions</button>
+        <button class="hub-tab" data-tab="info">Info</button>
+      </div>
+
+      <!-- ── Tab: Fleets ── -->
+      <div class="hub-tab-content active" id="tab-fleets">
+        <div class="panel-section-title">Fleets
+          <button id="btn-add-fleet" class="btn-xs">+ Add Fleet</button>
+        </div>
+
+        <!-- Inline create fleet form -->
+        <form id="fleet-form" class="mini-form hidden">
+          <input type="text" id="ff-name" placeholder="Fleet name" />
+          <button type="submit" class="btn-xs btn-xs--accent">Create</button>
+          <button type="button" id="btn-cancel-fleet" class="btn-xs">Cancel</button>
+        </form>
+
+        <div id="fleet-list"></div>
+      </div>
+
+      <!-- ── Tab: Missions ── -->
+      <div class="hub-tab-content" id="tab-missions">
+        <div class="panel-section-title">Mission Queue
+          <button id="btn-add-mission" class="btn-xs">+ Add Mission</button>
+        </div>
+
+        <!-- Inline create mission form -->
+        <form id="mission-form" class="mini-form hidden">
+          <input type="text"   id="mf-title"    placeholder="Mission title" required />
+          <select id="mf-type">
+            <option value="general">General</option>
+            <option value="surveillance">Surveillance</option>
+            <option value="delivery">Delivery</option>
+            <option value="search">Search &amp; Rescue</option>
+            <option value="inspection">Inspection</option>
+          </select>
+          <div class="mini-form-row">
+            <label>Min drones</label>
+            <input type="number" id="mf-drones"   value="1" min="1" style="width:60px" />
+          </div>
+          <div class="mini-form-row">
+            <label>Priority (low #=high)</label>
+            <input type="number" id="mf-priority" value="100" min="1" style="width:60px" />
+          </div>
+          <div class="mini-form-actions">
+            <button type="submit" class="btn-xs btn-xs--accent">Add to Queue</button>
+            <button type="button" id="btn-cancel-mission" class="btn-xs">Cancel</button>
+          </div>
+        </form>
+
+        <ol id="mission-list" class="mission-list"></ol>
+      </div>
+
+      <!-- ── Tab: Info ── -->
+      <div class="hub-tab-content" id="tab-info">
+        <div class="info-block">
+          <div class="info-label">Hub ID</div>
+          <div id="info-hub-id" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Name</div>
+          <div class="info-value" style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="info-hub-name" class="info-input" />
+            <button id="btn-rename-hub" class="btn-xs btn-xs--accent">Save</button>
+          </div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Location</div>
+          <div id="info-hub-coords" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Created</div>
+          <div id="info-hub-created" class="info-value">—</div>
+        </div>
+        <hr class="info-divider" />
+        <button id="btn-delete-hub" class="btn-danger">🗑 Delete Hub</button>
+      </div>
+    </div>
+
+    <!-- Placement mode banner -->
+    <div id="place-banner" class="place-banner hidden">
+      📍 Click anywhere on the map to place a hub — <button id="btn-cancel-place" class="btn-xs">Cancel</button>
+    </div>
+
+  </div><!-- /#app -->
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
