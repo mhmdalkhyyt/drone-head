@@ -3,83 +3,398 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Drone Tracker</title>
+  <title>Drone Command Center</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="auth.css" />
+  <link rel="stylesheet" href="cookie-policy.css" />
 </head>
 <body>
   <div id="app">
 
-    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
-    <aside id="sidebar">
-      <header>
+    <!-- ── Top HUD Bar ──────────────────────────────────────────────────────── -->
+    <div id="hud-bar">
+      <!-- Left Section: Logo & Connection -->
+      <div class="hud-section hud-left">
         <div class="logo">
           <span class="logo-icon">🚁</span>
-          <span class="logo-text">Drone Tracker</span>
+          <span class="logo-text">Drone Command</span>
         </div>
         <div id="connection-badge" class="badge badge--connecting">Connecting…</div>
-      </header>
-
-      <!-- Hubs section -->
-      <div class="section-title">
-        Mission Hubs
-        <button id="btn-place-hub" class="btn-icon" title="Click to place a hub on the map">📍 Place Hub</button>
       </div>
-      <ul id="hub-list"></ul>
+      
+      <!-- Center Section: Stats -->
+      <div class="hud-section hud-center hud-stats">
+        <div class="stat-pill">
+          <span class="stat-icon">🚁</span>
+          <span class="stat-value" id="stat-drones">0</span>
+          <span class="stat-label">Drones</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-icon">🏠</span>
+          <span class="stat-value" id="stat-hubs">0</span>
+          <span class="stat-label">Hubs</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-icon">📋</span>
+          <span class="stat-value" id="stat-missions">0</span>
+          <span class="stat-label">Missions</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-icon">🔋</span>
+          <span class="stat-value" id="stat-battery">100%</span>
+          <span class="stat-label">Avg Battery</span>
+        </div>
+      </div>
+      
+      <!-- Right Section: Situation Room & Options Panel -->
+      <div class="hud-section hud-right">
+        <!-- User Info -->
+        <div id="user-info" class="user-info hidden">
+          <span class="user-name">👤 <span id="current-user">User</span></span>
+          <button id="btn-logout" class="btn-logout" title="Logout">🚪</button>
+        </div>
+        
+        <!-- Situation Room Button -->
+        <button id="btn-situation-room" class="btn-situation-room" title="The Situation Room">
+          📊 Situation Room
+        </button>
+        
+        <!-- Situation Room Panel -->
+        <div id="situation-room-panel" class="situation-room-panel hidden">
+          <div class="situation-room-header">
+            <span class="situation-room-title">📊 The Situation Room</span>
+            <button id="btn-close-situation-room" class="btn-icon-sm" title="Close">✕</button>
+          </div>
+          <div class="situation-room-content">
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">🚁</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Fleet Count</div>
+                <div class="situation-stat-value" id="situation-fleet-count">0</div>
+              </div>
+            </div>
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">🟢</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Active Units</div>
+                <div class="situation-stat-value" id="situation-active-units">0</div>
+              </div>
+            </div>
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">🚗</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Ground Units</div>
+                <div class="situation-stat-value" id="situation-ground-units">0</div>
+              </div>
+            </div>
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">🚤</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Naval Units</div>
+                <div class="situation-stat-value" id="situation-naval-units">0</div>
+              </div>
+            </div>
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">🏠</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Total Hubs</div>
+                <div class="situation-stat-value" id="situation-hubs">0</div>
+              </div>
+            </div>
+            <div class="situation-stat-card">
+              <div class="situation-stat-icon">📋</div>
+              <div class="situation-stat-body">
+                <div class="situation-stat-label">Active Missions</div>
+                <div class="situation-stat-value" id="situation-active-missions">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div id="options-panel">
+          <button id="options-toggle" class="btn-icon" title="Options">⚙️ Options</button>
+            <div id="options-dropdown" class="options-dropdown hidden">
+              <!-- Save/Load State Section -->
+              <div class="options-item">
+                <span class="options-label">Save/Load State</span>
+                <input type="text" id="state-name" placeholder="State name (optional)" class="state-name-input" />
+                <button id="btn-save-state" class="btn-xs btn-xs--accent">💾 Save State</button>
+                <select id="state-select" class="state-select">
+                  <option value="">Select saved state...</option>
+                </select>
+                <div class="state-buttons">
+                  <button id="btn-load-state" class="btn-xs">📂 Load</button>
+                  <button id="btn-delete-state" class="btn-xs">🗑 Delete</button>
+                </div>
+              </div>
+              <div class="options-divider"></div>
+              <div class="options-item">
+                <span class="options-label">Map Controls</span>
+                <button id="btn-zoom-in" class="btn-xs" title="Zoom In">+</button>
+                <button id="btn-zoom-out" class="btn-xs" title="Zoom Out">−</button>
+              </div>
+              <div class="options-divider"></div>
+              <div class="options-item">
+                <span class="options-label">Display</span>
+                <label class="options-toggle">
+                  <input type="checkbox" id="toggle-grid" />
+                  <span class="toggle-slider"></span>
+                  Show Grid
+                </label>
+                <label class="options-toggle">
+                  <input type="checkbox" id="toggle-coords" checked />
+                  <span class="toggle-slider"></span>
+                  Show Coordinates
+                </label>
+              </div>
+              <div class="options-divider"></div>
+              <div class="options-item">
+                <span class="options-label">Zone Highlight</span>
+                <div class="color-picker-wrapper">
+                  <label for="highlight-color-picker" class="color-picker-label">Highlight Color</label>
+                  <input type="color" id="highlight-color-picker" value="#00d9ff" />
+                  <span id="highlight-color-preview" class="color-preview" style="background-color: #00d9ff;"></span>
+                </div>
+                <button id="btn-highlight-zone" class="btn-xs btn-xs--accent" style="margin-top: 8px;">🎨 Highlight Selected Zone</button>
+                <button id="btn-cancel-highlight" class="btn-xs" style="margin-top: 4px;">Cancel Highlight (Esc)</button>
+              </div>
+              <div class="options-divider"></div>
+              <div class="options-item">
+                <span class="options-label">Theme</span>
+                <select id="theme-select" class="options-select">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="midnight">Midnight</option>
+                  <option value="desert">Desert</option>
+                </select>
+              </div>
+              <div class="options-divider"></div>
+              <div class="options-item">
+                <button id="btn-cookie-settings" class="btn-xs btn-xs--secondary" style="width: 100%;">
+                  🍪 Cookie Preferences
+                </button>
+              </div>
+            </div>
+        </div>
+      </div>
+    </div>
 
-      <!-- Drone fleet overview -->
-      <div class="section-title" style="margin-top:12px;">Fleet Overview</div>
-      <ul id="drone-list"></ul>
+    <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <div class="sidebar-scroll">
+        <!-- Hubs section -->
+        <div class="section-title">
+          Mission Hubs
+          <button id="btn-place-hub" class="btn-icon" title="Click to place a hub on the map">📍 Place Hub</button>
+        </div>
+        <div class="section-title" style="margin-top:12px;">
+          Spawn Drone
+          <button id="btn-spawn-drone" class="btn-icon" title="Click to spawn a drone on the map">🚁 Spawn Drone</button>
+        </div>
+        <ul id="hub-list"></ul>
 
-      <div class="section-title" style="margin-top:auto; padding-top:16px;">Add / Update Drone</div>
-      <form id="drone-form">
-        <div class="form-row">
-          <label>ID</label>
-          <input type="text" id="f-id"       placeholder="drone-4"  required />
+        <!-- Areas of Interest section -->
+        <div class="section-title" style="margin-top:12px;">
+          Areas of Interest
+          <button id="btn-draw-area" class="btn-icon" title="Draw an area on the map">🔷 Draw</button>
         </div>
-        <div class="form-row">
-          <label>Name</label>
-          <input type="text" id="f-name"     placeholder="Delta" />
+        <ul id="aoi-list"></ul>
+
+        <!-- Ground Units section -->
+        <div class="section-title" style="margin-top:12px;">
+          Ground Units
+          <button id="btn-spawn-ground" class="btn-icon" title="Click to spawn a ground unit on the map">🚗 Spawn Unit</button>
         </div>
-        <div class="form-row">
-          <label>Lat</label>
-          <input type="number" id="f-lat"    placeholder="59.3293" step="any" required />
+        <ul id="ground-unit-list"></ul>
+
+        <!-- Naval Units section -->
+        <div class="section-title" style="margin-top:12px;">
+          Naval Units
+          <button id="btn-spawn-naval" class="btn-icon" title="Click to spawn a naval unit on water">🚤 Spawn Unit</button>
         </div>
-        <div class="form-row">
-          <label>Lng</label>
-          <input type="number" id="f-lng"    placeholder="18.0686" step="any" required />
-        </div>
-        <div class="form-row">
-          <label>Alt (m)</label>
-          <input type="number" id="f-alt"    placeholder="100" step="any" />
-        </div>
-        <div class="form-row">
-          <label>Speed</label>
-          <input type="number" id="f-speed"  placeholder="10" step="any" />
-        </div>
-        <div class="form-row">
-          <label>Battery %</label>
-          <input type="number" id="f-battery" placeholder="90" min="0" max="100" />
-        </div>
-        <div class="form-row">
-          <label>Status</label>
-          <select id="f-status">
-            <option value="active">Active</option>
-            <option value="idle">Idle</option>
-            <option value="warning">Warning</option>
-          </select>
-        </div>
-        <button type="submit" class="btn-primary">Send</button>
-      </form>
+        <ul id="naval-unit-list"></ul>
+
+        <!-- Drone fleet overview -->
+        <div class="section-title" style="margin-top:12px;">Fleet Overview</div>
+        <ul id="drone-list"></ul>
+      </div>
     </aside>
 
-    <!-- ── Map ──────────────────────────────────────────────────────────── -->
+    <!-- ── Map ──────────────────────────────────────────────────────────────── -->
     <main id="map"></main>
 
-    <!-- ── Hub Panel (right drawer) ─────────────────────────────────────── -->
+    <!-- ── RTS Bottom Control Panel ────────────────────────────────────────── -->
+    <div id="rts-panel">
+      <!-- Action Icons (draggable) -->
+      <div id="action-icons">
+        <div class="action-icon" data-action="spawn-drone" title="Spawn Drone">
+          <div class="action-icon__icon">🚁</div>
+          <div class="action-icon__label">Drone</div>
+          <div class="action-icon__hotkey">1</div>
+        </div>
+        <div class="action-icon" data-action="place-hub" title="Place Hub">
+          <div class="action-icon__icon">🏠</div>
+          <div class="action-icon__label">Hub</div>
+          <div class="action-icon__hotkey">2</div>
+        </div>
+        <div class="action-icon" data-action="spawn-ground" title="Spawn Ground Unit">
+          <div class="action-icon__icon">🚗</div>
+          <div class="action-icon__label">Ground</div>
+          <div class="action-icon__hotkey">3</div>
+        </div>
+        <div class="action-icon" data-action="set-waypoint" title="Set Waypoint">
+          <div class="action-icon__icon">🎯</div>
+          <div class="action-icon__label">Waypoint</div>
+          <div class="action-icon__hotkey">4</div>
+        </div>
+        <div class="action-icon" data-action="surveillance" title="Surveillance Mode">
+          <div class="action-icon__icon">👁</div>
+          <div class="action-icon__label">Scout</div>
+          <div class="action-icon__hotkey">5</div>
+        </div>
+        <div class="action-icon" data-action="return-base" title="Return to Base">
+          <div class="action-icon__icon">🔄</div>
+          <div class="action-icon__label">Return</div>
+          <div class="action-icon__hotkey">6</div>
+        </div>
+        <div class="action-icon" data-action="emergency" title="Emergency Landing">
+          <div class="action-icon__icon">⚠️</div>
+          <div class="action-icon__label">Emergency</div>
+          <div class="action-icon__hotkey">7</div>
+        </div>
+        <div class="action-icon" data-action="draw-area" title="Draw Area of Interest">
+          <div class="action-icon__icon">🔷</div>
+          <div class="action-icon__label">Draw Area</div>
+          <div class="action-icon__hotkey">8</div>
+        </div>
+        <div class="action-icon" data-action="show-roads" title="Show Roads">
+          <div class="action-icon__icon">🛣️</div>
+          <div class="action-icon__label">Roads</div>
+          <div class="action-icon__hotkey">9</div>
+        </div>
+        <div class="action-icon" data-action="highlight-road" title="Highlight Road">
+          <div class="action-icon__icon">🎨</div>
+          <div class="action-icon__label">Highlight</div>
+          <div class="action-icon__hotkey">0</div>
+        </div>
+      </div>
+
+      <!-- Selection Panel -->
+      <div id="selection-panel">
+        <div class="selection-panel__empty" id="selection-empty">
+          <span class="selection-placeholder">Select a unit or click an action above</span>
+        </div>
+        <div class="selection-panel__content hidden" id="selection-content">
+          <div class="selection-header">
+            <span class="selection-name" id="selection-name">Drone</span>
+            <span class="selection-id" id="selection-id">drone-1</span>
+          </div>
+          <div class="selection-stats">
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🔋</span>
+              <span class="selection-stat__value" id="selection-battery">100%</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🏔️</span>
+              <span class="selection-stat__value" id="selection-altitude">100m</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">💨</span>
+              <span class="selection-stat__value" id="selection-speed">0 km/h</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📡</span>
+              <span class="selection-stat__value" id="selection-status">idle</span>
+            </div>
+          </div>
+          <div class="selection-actions">
+            <button class="selection-action-btn" data-action="view">👁 View</button>
+            <button class="selection-action-btn" data-action="move">🎯 Move</button>
+            <button class="selection-action-btn" data-action="patrol">🔄 Patrol</button>
+          </div>
+        </div>
+        
+        <!-- Ground Unit Selection Panel (hidden by default) -->
+        <div class="selection-panel__empty hidden" id="ground-selection-empty">
+          <span class="selection-placeholder">Select a ground unit</span>
+        </div>
+        <div class="selection-panel__content hidden" id="ground-selection-content">
+          <div class="selection-header">
+            <span class="selection-name" id="ground-selection-name">Unit</span>
+            <span class="selection-id" id="ground-selection-id">ground-1</span>
+          </div>
+          <div class="selection-stats">
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🚗</span>
+              <span class="selection-stat__value" id="ground-selection-type">vehicle</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">💨</span>
+              <span class="selection-stat__value" id="ground-selection-speed">0 km/h</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🛣️</span>
+              <span class="selection-stat__value" id="ground-selection-road">On Road</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📡</span>
+              <span class="selection-stat__value" id="ground-selection-status">idle</span>
+            </div>
+          </div>
+          <div class="selection-actions">
+            <button class="selection-action-btn" data-action="ground-view">👁 View</button>
+            <button class="selection-action-btn" data-action="ground-move">🎯 Move</button>
+          </div>
+        </div>
+        
+        <!-- Naval Unit Selection Panel (hidden by default) -->
+        <div class="selection-panel__empty hidden" id="naval-selection-empty">
+          <span class="selection-placeholder">Select a naval unit</span>
+        </div>
+        <div class="selection-panel__content hidden" id="naval-selection-content">
+          <div class="selection-header">
+            <span class="selection-name" id="naval-selection-name">Unit</span>
+            <span class="selection-id" id="naval-selection-id">naval-1</span>
+          </div>
+          <div class="selection-stats">
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🚤</span>
+              <span class="selection-stat__value" id="naval-selection-type">Fast Boat</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">💨</span>
+              <span class="selection-stat__value" id="naval-selection-speed">0 km/h</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🌊</span>
+              <span class="selection-stat__value" id="naval-selection-location">On Water</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📡</span>
+              <span class="selection-stat__value" id="naval-selection-status">idle</span>
+            </div>
+          </div>
+          <div class="selection-actions">
+            <button class="selection-action-btn" data-action="naval-view">👁 View</button>
+            <button class="selection-action-btn" data-action="naval-move">🎯 Move</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mission Quick Actions -->
+      <div id="mission-actions">
+        <button class="mission-btn" id="mission-quick-add" title="Quick Add Mission">
+          <span class="mission-btn__icon">+</span>
+          <span class="mission-btn__label">Mission</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Hub Panel (right drawer) ─────────────────────────────────────────── -->
     <div id="hub-panel" class="hub-panel hidden">
       <div class="hub-panel__header">
         <span id="hub-panel-title">Hub</span>
@@ -89,6 +404,7 @@
       <!-- Tabs -->
       <div class="hub-tabs">
         <button class="hub-tab active" data-tab="fleets">Fleets</button>
+        <button class="hub-tab" data-tab="drones">Drones</button>
         <button class="hub-tab" data-tab="missions">Missions</button>
         <button class="hub-tab" data-tab="info">Info</button>
       </div>
@@ -109,6 +425,11 @@
         <div id="fleet-list"></div>
       </div>
 
+      <!-- ── Tab: Drones ── -->
+      <div class="hub-tab-content" id="tab-drones">
+        <div id="drone-list-hub"></div>
+      </div>
+
       <!-- ── Tab: Missions ── -->
       <div class="hub-tab-content" id="tab-missions">
         <div class="panel-section-title">Mission Queue
@@ -122,7 +443,7 @@
             <option value="general">General</option>
             <option value="surveillance">Surveillance</option>
             <option value="delivery">Delivery</option>
-            <option value="search">Search &amp; Rescue</option>
+            <option value="search">Search & Rescue</option>
             <option value="inspection">Inspection</option>
           </select>
           <div class="mini-form-row">
@@ -132,6 +453,30 @@
           <div class="mini-form-row">
             <label>Priority (low #=high)</label>
             <input type="number" id="mf-priority" value="100" min="1" style="width:60px" />
+          </div>
+          <!-- Waypoint binding -->
+          <div class="mini-form-row">
+            <label>Bound Waypoint</label>
+            <select id="mf-waypoint" style="flex:1">
+              <option value="">— No waypoint —</option>
+            </select>
+            <button type="button" id="btn-create-waypoint" class="btn-xs" title="Create new waypoint">+ New</button>
+          </div>
+          <!-- End condition -->
+          <div class="mini-form-row">
+            <label>End Condition</label>
+            <select id="mf-end-condition" style="flex:1">
+              <option value="manual">Manual (click Done)</option>
+              <option value="arrival">On Arrival (all drones reach waypoint)</option>
+              <option value="drone_reached">Drone Reached (any drone reaches waypoint)</option>
+              <option value="time_elapsed">Time Elapsed (after X seconds)</option>
+              <option value="fleet_idle">Fleet Idle (when fleet returns to idle)</option>
+            </select>
+          </div>
+          <!-- Time condition value (shown when time_elapsed is selected) -->
+          <div class="mini-form-row hidden" id="mf-time-condition-row">
+            <label>Duration (seconds)</label>
+            <input type="number" id="mf-end-condition-value" value="60" min="1" style="width:80px" />
           </div>
           <div class="mini-form-actions">
             <button type="submit" class="btn-xs btn-xs--accent">Add to Queue</button>
@@ -173,10 +518,131 @@
       📍 Click anywhere on the map to place a hub — <button id="btn-cancel-place" class="btn-xs">Cancel</button>
     </div>
 
+    <!-- Drag preview marker -->
+    <div id="drag-preview" class="drag-preview hidden">
+      <span class="drag-preview__icon">📍</span>
+    </div>
+
+    <!-- Map Context Menu (right-click on empty map) -->
+    <div id="map-context-menu" class="context-menu hidden">
+      <div class="context-menu-header">
+        <span class="context-menu-title" id="map-context-title">📍 Map</span>
+        <button id="map-context-close" class="btn-icon-sm" title="Close">✕</button>
+      </div>
+      <div class="context-menu-body">
+        <div class="map-context-coords" id="map-context-coords">
+          <!-- Dynamic coordinates -->
+        </div>
+        <div class="context-divider"></div>
+        <div class="context-options">
+          <button class="context-option" data-map-action="spawn-drone">
+            <span class="context-option-icon">🚁</span>
+            <span class="context-option-label">Spawn Drone Here</span>
+          </button>
+          <button class="context-option" data-map-action="place-hub">
+            <span class="context-option-icon">🏠</span>
+            <span class="context-option-label">Place Hub Here</span>
+          </button>
+          <button class="context-option" data-map-action="spawn-ground">
+            <span class="context-option-icon">🚗</span>
+            <span class="context-option-label">Spawn Ground Unit Here</span>
+          </button>
+          <button class="context-option" data-map-action="spawn-naval">
+            <span class="context-option-icon">🚤</span>
+            <span class="context-option-label">Spawn Naval Unit Here</span>
+          </button>
+          <div class="context-divider"></div>
+          <button class="context-option" data-map-action="draw-area">
+            <span class="context-option-icon">🔷</span>
+            <span class="context-option-label">Draw Area Here</span>
+          </button>
+          <button class="context-option" data-map-action="copy-coords">
+            <span class="context-option-icon">📋</span>
+            <span class="context-option-label">Copy Coordinates</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Entity Context Menu (right-click on drone/hub markers) -->
+    <div id="entity-context-menu" class="context-menu hidden">
+      <div class="context-menu-header">
+        <span class="context-menu-title" id="entity-context-title">🚁 Drone</span>
+        <button id="entity-context-close" class="btn-icon-sm" title="Close">✕</button>
+      </div>
+      <div class="context-menu-body">
+        <div class="entity-context-info" id="entity-context-info">
+          <!-- Dynamic content -->
+        </div>
+        <div class="context-divider"></div>
+         <div class="context-options">
+           <button class="context-option" data-action="spawn-drone">
+             <span class="context-option-icon">🚁</span>
+             <span class="context-option-label">Spawn Drone Here</span>
+           </button>
+           <div class="context-divider"></div>
+           <button class="context-option" data-action="info">
+             <span class="context-option-icon">ℹ️</span>
+             <span class="context-option-label">Info</span>
+           </button>
+           <button class="context-option" data-action="copy">
+             <span class="context-option-icon">📋</span>
+             <span class="context-option-label">Copy</span>
+           </button>
+           <button class="context-option" data-action="delete">
+             <span class="context-option-icon">🗑️</span>
+             <span class="context-option-label">Delete</span>
+           </button>
+         </div>
+      </div>
+    </div>
+    
+    <!-- Toast notification for copy feedback -->
+    <div id="toast-notification" class="toast hidden">
+      <span id="toast-message"></span>
+    </div>
+
+    <!-- Ruleset Editor Modal -->
+    <div id="ruleset-modal" class="modal hidden">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="ruleset-modal-title">Edit Ruleset</h3>
+          <button id="ruleset-modal-close" class="btn-icon-sm" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="ruleset-info">
+            <span class="ruleset-info-label">Area:</span>
+            <span id="ruleset-area-name">—</span>
+          </div>
+          <textarea id="ruleset-editor" placeholder="Enter rules for this area...
+
+Example rules:
+- Drones must maintain altitude above 100m
+- Maximum speed: 30 km/h
+- No-fly zone during night hours
+- Surveillance only, no engagement
+- Report every 30 seconds"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button id="ruleset-export" class="btn-xs">📥 Export</button>
+          <button id="ruleset-import" class="btn-xs">📤 Import</button>
+          <input type="file" id="ruleset-import-file" accept=".txt" style="display:none" />
+          <button id="ruleset-save" class="btn-xs btn-xs--accent">💾 Save</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /#app -->
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Cookie Policy (must load before app.js) -->
+  <script src="cookie-policy.js"></script>
+  
+  <!-- Auth and App -->
+  <script src="auth.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

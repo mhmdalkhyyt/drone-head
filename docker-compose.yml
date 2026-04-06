@@ -1,0 +1,16 @@
+services:
+  drone-head:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app/../frontend:ro
+      - db-data:/app/data
+    environment:
+      - DEVELOPMENT_MODE=develop
+    restart: unless-stopped
+
+volumes:
+  db-data:
