@@ -15,16 +15,28 @@
 <body>
   <div id="app">
 
-    <!-- ── Top HUD Bar ──────────────────────────────────────────────────────── -->
-    <div id="hud-bar">
-      <!-- Left Section: Logo & Connection -->
-      <div class="hud-section hud-left">
-        <div class="logo">
-          <span class="logo-icon">🚁</span>
-          <span class="logo-text">Drone Command</span>
+      <!-- ── Top HUD Bar ──────────────────────────────────────────────────────── -->
+      <div id="hud-bar">
+        <!-- Left Section: Logo & Connection -->
+        <div class="hud-section hud-left">
+          <button id="btn-toggle-sidebar" class="btn-sidebar-toggle" title="Toggle Sidebar (Z)">
+            <span class="btn-sidebar-toggle__icon">◀</span>
+            <span class="btn-sidebar-toggle__hotkey">Z</span>
+          </button>
+          <div class="logo">
+            <span class="logo-icon">🚁</span>
+            <span class="logo-text">Drone Command</span>
+          </div>
+          <div id="connection-badge" class="badge badge--connecting">Connecting…</div>
         </div>
-        <div id="connection-badge" class="badge badge--connecting">Connecting…</div>
-      </div>
+        
+        <!-- Search Bar Section -->
+        <div class="hud-section hud-search">
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" class="search-input" placeholder="Search address..." />
+          </div>
+        </div>
       
       <!-- Center Section: Stats -->
       <div class="hud-section hud-center hud-stats">
@@ -189,40 +201,22 @@
     <aside id="sidebar">
       <div class="sidebar-scroll">
         <!-- Hubs section -->
-        <div class="section-title">
-          Mission Hubs
+        <div class="section-title section-title--collapsible" id="hubs-section-header">
+          <span class="section-title__text">Mission Hubs</span>
+          <span class="section-title__chevron">▼</span>
           <button id="btn-place-hub" class="btn-icon" title="Click to place a hub on the map">📍 Place Hub</button>
         </div>
-        <div class="section-title" style="margin-top:12px;">
-          Spawn Drone
-          <button id="btn-spawn-drone" class="btn-icon" title="Click to spawn a drone on the map">🚁 Spawn Drone</button>
-        </div>
-        <ul id="hub-list"></ul>
+        <ul id="hub-list" class="section-content"></ul>
 
         <!-- Areas of Interest section -->
-        <div class="section-title" style="margin-top:12px;">
-          Areas of Interest
+        <div class="section-title section-title--collapsible" id="aoi-section-header" style="margin-top:12px;">
+          <span class="section-title__text">Areas of Interest</span>
+          <span class="section-title__chevron">▼</span>
           <button id="btn-draw-area" class="btn-icon" title="Draw an area on the map">🔷 Draw</button>
+          <button id="btn-draw-ew-area" class="btn-icon" title="Draw EW Signal Area (box)">📡 EW Area</button>
         </div>
-        <ul id="aoi-list"></ul>
+        <ul id="aoi-list" class="section-content"></ul>
 
-        <!-- Ground Units section -->
-        <div class="section-title" style="margin-top:12px;">
-          Ground Units
-          <button id="btn-spawn-ground" class="btn-icon" title="Click to spawn a ground unit on the map">🚗 Spawn Unit</button>
-        </div>
-        <ul id="ground-unit-list"></ul>
-
-        <!-- Naval Units section -->
-        <div class="section-title" style="margin-top:12px;">
-          Naval Units
-          <button id="btn-spawn-naval" class="btn-icon" title="Click to spawn a naval unit on water">🚤 Spawn Unit</button>
-        </div>
-        <ul id="naval-unit-list"></ul>
-
-        <!-- Drone fleet overview -->
-        <div class="section-title" style="margin-top:12px;">Fleet Overview</div>
-        <ul id="drone-list"></ul>
       </div>
     </aside>
 
@@ -385,6 +379,47 @@
             <button class="selection-action-btn" data-action="naval-move">🎯 Move</button>
           </div>
         </div>
+        
+        <!-- EW Signal Area Selection Panel (hidden by default) -->
+        <div class="selection-panel__empty hidden" id="ew-selection-empty">
+          <span class="selection-placeholder">Select an EW Signal Area</span>
+        </div>
+        <div class="selection-panel__content hidden" id="ew-selection-content">
+          <div class="selection-header">
+            <span class="selection-name" id="ew-selection-name">EW Signal Area</span>
+            <span class="selection-id" id="ew-selection-id">aoi-xxx</span>
+          </div>
+          <div class="selection-stats">
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📡</span>
+              <span class="selection-stat__value" id="ew-selection-type">EW Signal Area</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📍</span>
+              <span class="selection-stat__value" id="ew-selection-center">—</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">📐</span>
+              <span class="selection-stat__value" id="ew-selection-size">—</span>
+            </div>
+            <div class="selection-stat">
+              <span class="selection-stat__icon">🔋</span>
+              <span class="selection-stat__value" id="ew-selection-signal">—</span>
+            </div>
+          </div>
+          <div class="selection-info-section">
+            <div class="selection-info-label">Ruleset</div>
+            <div class="selection-info-text" id="ew-selection-ruleset">—</div>
+          </div>
+          <div class="selection-info-section">
+            <div class="selection-info-label">Created</div>
+            <div class="selection-info-text" id="ew-selection-created">—</div>
+          </div>
+          <div class="selection-actions">
+            <button class="selection-action-btn" id="btn-edit-ew-ruleset">✏️ Edit Ruleset</button>
+            <button class="selection-action-btn" id="btn-center-ew-map">🗺 Center on Map</button>
+          </div>
+        </div>
       </div>
 
       <!-- Mission Quick Actions -->
@@ -408,6 +443,7 @@
         <button class="hub-tab active" data-tab="fleets">Fleets</button>
         <button class="hub-tab" data-tab="drones">Drones</button>
         <button class="hub-tab" data-tab="missions">Missions</button>
+        <button class="hub-tab" data-tab="overview">Overview</button>
         <button class="hub-tab" data-tab="info">Info</button>
       </div>
 
@@ -489,6 +525,12 @@
         <ol id="mission-list" class="mission-list"></ol>
       </div>
 
+      <!-- ── Tab: Overview ── -->
+      <div class="hub-tab-content" id="tab-overview">
+        <div class="panel-section-title">Fleet Overview</div>
+        <ul id="drone-list"></ul>
+      </div>
+
       <!-- ── Tab: Info ── -->
       <div class="hub-tab-content" id="tab-info">
         <div class="info-block">
@@ -512,6 +554,232 @@
         </div>
         <hr class="info-divider" />
         <button id="btn-delete-hub" class="btn-danger">🗑 Delete Hub</button>
+      </div>
+    </div>
+
+    <!-- ── Unit Detail Panel (right drawer) ──────────────────────────────────── -->
+    <div id="unit-panel" class="hub-panel hidden">
+      <div class="hub-panel__header">
+        <span id="unit-panel-title">Unit</span>
+        <button id="unit-panel-close" class="btn-icon-sm" title="Close">✕</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="hub-tabs">
+        <button class="hub-tab active" data-tab="details">Details</button>
+        <button class="hub-tab" data-tab="actions">Actions</button>
+        <button class="hub-tab" data-tab="info">Info</button>
+      </div>
+
+      <!-- ── Tab: Details ── -->
+      <div class="hub-tab-content active" id="tab-unit-details">
+        <!-- Drone-specific details -->
+        <div id="drone-details" class="unit-details hidden">
+          <div class="info-block">
+            <div class="info-label">Drone ID</div>
+            <div id="drone-info-id" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Name</div>
+            <div class="info-value" style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="drone-info-name" class="info-input" />
+              <button id="btn-rename-drone" class="btn-xs btn-xs--accent">Save</button>
+            </div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Status</div>
+            <div id="drone-info-status" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Battery</div>
+            <div id="drone-info-battery" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Altitude</div>
+            <div id="drone-info-altitude" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Speed</div>
+            <div id="drone-info-speed" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Position</div>
+            <div id="drone-info-coords" class="info-value">—</div>
+          </div>
+          <div class="info-block" id="drone-info-hub-row">
+            <div class="info-label">Assigned Hub</div>
+            <div id="drone-info-hub" class="info-value">—</div>
+          </div>
+          <div class="info-block" id="drone-info-fleet-row">
+            <div class="info-label">Assigned Fleet</div>
+            <div id="drone-info-fleet" class="info-value">—</div>
+          </div>
+          <hr class="info-divider" />
+          <button id="btn-simulate-drone" class="btn-xs btn-xs--accent">🛫 Simulate Flight</button>
+          <button id="btn-stop-simulation" class="btn-xs" style="display:none">⏹ Stop Simulation</button>
+        </div>
+
+        <!-- Ground unit-specific details -->
+        <div id="ground-details" class="unit-details hidden">
+          <div class="info-block">
+            <div class="info-label">Unit ID</div>
+            <div id="ground-info-id" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Name</div>
+            <div class="info-value" style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="ground-info-name" class="info-input" />
+              <button id="btn-rename-ground" class="btn-xs btn-xs--accent">Save</button>
+            </div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Type</div>
+            <div id="ground-info-type" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Status</div>
+            <div id="ground-info-status" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Battery</div>
+            <div id="ground-info-battery" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Speed</div>
+            <div id="ground-info-speed" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Position</div>
+            <div id="ground-info-coords" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Road Status</div>
+            <div id="ground-info-road" class="info-value">—</div>
+          </div>
+          <hr class="info-divider" />
+          <button id="btn-move-ground" class="btn-xs btn-xs--accent">🎯 Move Unit</button>
+          <button id="btn-cancel-ground-move" class="btn-xs" style="display:none">✕ Cancel</button>
+        </div>
+
+        <!-- Naval unit-specific details -->
+        <div id="naval-details" class="unit-details hidden">
+          <div class="info-block">
+            <div class="info-label">Unit ID</div>
+            <div id="naval-info-id" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Name</div>
+            <div class="info-value" style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="naval-info-name" class="info-input" />
+              <button id="btn-rename-naval" class="btn-xs btn-xs--accent">Save</button>
+            </div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Type</div>
+            <div id="naval-info-type" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Status</div>
+            <div id="naval-info-status" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Battery</div>
+            <div id="naval-info-battery" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Speed</div>
+            <div id="naval-info-speed" class="info-value">—</div>
+          </div>
+          <div class="info-block">
+            <div class="info-label">Position</div>
+            <div id="naval-info-coords" class="info-value">—</div>
+          </div>
+          <hr class="info-divider" />
+          <button id="btn-move-naval" class="btn-xs btn-xs--accent">🎯 Move Unit</button>
+          <button id="btn-cancel-naval-move" class="btn-xs" style="display:none">✕ Cancel</button>
+        </div>
+      </div>
+
+      <!-- ── Tab: Actions ── -->
+      <div class="hub-tab-content" id="tab-unit-actions">
+        <div class="panel-section-title">Quick Actions</div>
+        
+        <!-- Drone actions -->
+        <div id="drone-actions" class="unit-actions hidden">
+          <div class="action-grid">
+            <button id="action-drone-view" class="action-card">
+              <span class="action-card__icon">👁</span>
+              <span class="action-card__label">Center on Map</span>
+            </button>
+            <button id="action-drone-patrol" class="action-card">
+              <span class="action-card__icon">🔄</span>
+              <span class="action-card__label">Patrol</span>
+            </button>
+            <button id="action-drone-surveillance" class="action-card">
+              <span class="action-card__icon">👁</span>
+              <span class="action-card__label">Surveillance</span>
+            </button>
+            <button id="action-drone-return" class="action-card">
+              <span class="action-card__icon">🔄</span>
+              <span class="action-card__label">Return to Hub</span>
+            </button>
+            <button id="action-drone-emergency" class="action-card">
+              <span class="action-card__icon">⚠️</span>
+              <span class="action-card__label">Emergency Land</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Ground unit actions -->
+        <div id="ground-actions" class="unit-actions hidden">
+          <div class="action-grid">
+            <button id="action-ground-view" class="action-card">
+              <span class="action-card__icon">👁</span>
+              <span class="action-card__label">Center on Map</span>
+            </button>
+            <button id="action-ground-move" class="action-card">
+              <span class="action-card__icon">🎯</span>
+              <span class="action-card__label">Move to Location</span>
+            </button>
+            <button id="action-ground-stop" class="action-card">
+              <span class="action-card__icon">⏹</span>
+              <span class="action-card__label">Stop Movement</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Naval unit actions -->
+        <div id="naval-actions" class="unit-actions hidden">
+          <div class="action-grid">
+            <button id="action-naval-view" class="action-card">
+              <span class="action-card__icon">👁</span>
+              <span class="action-card__label">Center on Map</span>
+            </button>
+            <button id="action-naval-move" class="action-card">
+              <span class="action-card__icon">🎯</span>
+              <span class="action-card__label">Move to Location</span>
+            </button>
+            <button id="action-naval-stop" class="action-card">
+              <span class="action-card__icon">⏹</span>
+              <span class="action-card__label">Stop Movement</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Tab: Info ── -->
+      <div class="hub-tab-content" id="tab-unit-info">
+        <div class="info-block">
+          <div class="info-label">Created</div>
+          <div id="unit-info-created" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Last Update</div>
+          <div id="unit-info-updated" class="info-value">—</div>
+        </div>
+        <hr class="info-divider" />
+        <button id="btn-delete-unit" class="btn-danger">🗑 Delete Unit</button>
+        <button id="btn-center-unit-map" class="btn-xs btn-xs--accent" style="margin-top:8px">🗺 Center on Map</button>
       </div>
     </div>
 

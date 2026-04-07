@@ -1,4 +1,3 @@
-/* ── Reset & base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -35,6 +34,380 @@
   --space-md:  clamp(12px, 1vw, 16px);
   --space-lg:  clamp(16px, 1.5vw, 24px);
   --space-xl:  clamp(24px, 2vw, 32px);
+}
+
+/* ── Responsive scaling for sidebar content ───────────────────────────────── */
+/* Scale sidebar content based on viewport width */
+#sidebar {
+  font-size: clamp(0.75rem, 1.8vw, 1rem);
+}
+
+/* Scale card elements in sidebar */
+.hub-card, .drone-card, .aoi-card, .ground-unit-card, .fleet-card, .mission-item {
+  padding: clamp(6px, 1vw, 12px);
+}
+
+.hub-card__name, .drone-card .card-name, .aoi-card__name {
+  font-size: clamp(0.75rem, 1.4vw, 0.95rem);
+}
+
+.hub-card__meta, .drone-card .card-id, .aoi-card__meta {
+  font-size: clamp(0.6rem, 1vw, 0.75rem);
+}
+
+/* Scale section titles */
+.section-title {
+  font-size: clamp(0.6rem, 1.2vw, 0.8rem);
+  padding: clamp(8px, 1vw, 16px) clamp(8px, 1vw, 16px) clamp(4px, 0.6vw, 8px);
+}
+
+/* Scale buttons */
+.btn-icon {
+  padding: clamp(2px, 0.5vw, 6px) clamp(4px, 0.8vw, 10px);
+  font-size: clamp(0.65rem, 1vw, 0.8rem);
+}
+
+.btn-xs {
+  padding: clamp(2px, 0.4vw, 4px) clamp(4px, 0.8vw, 10px);
+  font-size: clamp(0.6rem, 0.9vw, 0.75rem);
+}
+
+/* Scale form elements */
+#drone-form {
+  padding: 0 clamp(8px, 1vw, 16px);
+  gap: clamp(4px, 0.6vw, 10px);
+}
+
+.form-row {
+  gap: clamp(4px, 0.6vw, 8px);
+}
+
+.form-row label {
+  width: clamp(50px, 8vw, 68px);
+  font-size: clamp(0.65rem, 1vw, 0.8rem);
+}
+
+.form-row input,
+.form-row select {
+  font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+  padding: clamp(3px, 0.5vw, 6px) clamp(4px, 0.7vw, 8px);
+}
+
+/* Scale stat pills in HUD */
+.stat-pill {
+  padding: clamp(4px, 0.6vw, 8px) clamp(6px, 1vw, 14px);
+  font-size: clamp(0.65rem, 1vw, 0.8rem);
+}
+
+.stat-icon {
+  font-size: clamp(0.8rem, 1.2vw, 1.1rem);
+}
+
+.stat-value {
+  font-size: clamp(0.8rem, 1.4vw, 1.1rem);
+}
+
+.stat-label {
+  font-size: clamp(0.6rem, 0.9vw, 0.75rem);
+}
+
+/* Scale logo */
+.logo {
+  gap: clamp(6px, 0.8vw, 12px);
+}
+
+.logo-icon {
+  font-size: clamp(1.2rem, 2vw, 1.8rem);
+}
+
+.logo-text {
+  font-size: clamp(0.8rem, 1.5vw, 1.2rem);
+  letter-spacing: clamp(1px, 0.3vw, 2px);
+}
+
+/* Scale hud bar padding */
+#hud-bar {
+  padding: 0 clamp(10px, 1.5vw, 24px);
+  gap: clamp(8px, 1vw, 16px);
+}
+
+.hud-section {
+  gap: clamp(8px, 1vw, 16px);
+}
+
+/* Scale action icons in RTS panel */
+.action-icon {
+  padding: clamp(4px, 0.8vw, 12px) clamp(3px, 0.6vw, 10px);
+  gap: clamp(2px, 0.4vw, 4px);
+}
+
+.action-icon__icon {
+  font-size: clamp(1rem, 2vw, 2.2rem);
+}
+
+.action-icon__label {
+  font-size: clamp(0.45rem, 0.7vw, 0.8rem);
+}
+
+.action-icon__hotkey {
+  font-size: clamp(0.35rem, 0.5vw, 0.65rem);
+  padding: clamp(0px, 0.3vw, 2px) clamp(2px, 0.4vw, 5px);
+}
+
+/* Scale selection panel */
+#selection-panel {
+  padding: clamp(6px, 1vw, 16px);
+  gap: clamp(4px, 0.6vw, 10px);
+}
+
+.selection-name {
+  font-size: clamp(0.8rem, 1.5vw, 1.2rem);
+}
+
+.selection-id {
+  font-size: clamp(0.55rem, 0.8vw, 0.75rem);
+}
+
+.selection-stat {
+  font-size: clamp(0.65rem, 1vw, 0.85rem);
+  gap: clamp(4px, 0.5vw, 8px);
+}
+
+.selection-stat__icon {
+  font-size: clamp(0.8rem, 1.2vw, 1.1rem);
+}
+
+.selection-stat__value {
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+}
+
+.selection-action-btn {
+  padding: clamp(4px, 0.6vw, 8px) clamp(6px, 1vw, 12px);
+  font-size: clamp(0.6rem, 0.9vw, 0.8rem);
+}
+
+/* Scale mission button */
+.mission-btn {
+  padding: clamp(4px, 0.8vw, 12px) clamp(8px, 1.2vw, 20px);
+  font-size: clamp(0.6rem, 1vw, 0.9rem);
+  gap: clamp(3px, 0.5vw, 6px);
+}
+
+.mission-btn__icon {
+  font-size: clamp(0.8rem, 1.2vw, 1.3rem);
+}
+
+/* Scale hub panel */
+.hub-panel__header {
+  padding: clamp(10px, 1vw, 16px);
+}
+
+.hub-panel__header span {
+  font-size: clamp(0.85rem, 1.5vw, 1.1rem);
+}
+
+.hub-tab {
+  padding: clamp(8px, 1vw, 14px) 0;
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+}
+
+.hub-tab-content {
+  padding: clamp(8px, 1vw, 16px);
+  gap: clamp(6px, 0.8vw, 12px);
+}
+
+/* Scale mini forms */
+.mini-form {
+  padding: clamp(6px, 1vw, 12px);
+  gap: clamp(4px, 0.7vw, 10px);
+}
+
+.mini-form input,
+.mini-form select {
+  font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+  padding: clamp(3px, 0.5vw, 6px) clamp(4px, 0.7vw, 8px);
+}
+
+.mini-form-row {
+  gap: clamp(4px, 0.6vw, 8px);
+}
+
+.mini-form-row label {
+  font-size: clamp(0.6rem, 0.9vw, 0.75rem);
+}
+
+/* Scale fleet cards */
+.fleet-card__name {
+  font-size: clamp(0.75rem, 1.3vw, 0.95rem);
+}
+
+.fleet-status {
+  font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+  padding: clamp(1px, 0.3vw, 3px) clamp(4px, 0.7vw, 8px);
+}
+
+/* Scale mission items */
+.mission-title {
+  font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+}
+
+.mission-meta {
+  font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+}
+
+.mission-badge {
+  font-size: clamp(0.5rem, 0.7vw, 0.65rem);
+  padding: clamp(1px, 0.3vw, 2px) clamp(4px, 0.7vw, 8px);
+}
+
+.mission-icon {
+  font-size: clamp(0.8rem, 1.2vw, 1.1rem);
+}
+
+/* Scale info blocks */
+.info-label {
+  font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+}
+
+.info-value {
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+}
+
+.info-input {
+  font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+  padding: clamp(3px, 0.5vw, 5px) clamp(4px, 0.7vw, 8px);
+}
+
+/* Scale options dropdown */
+.options-dropdown {
+  min-width: clamp(180px, 30vw, 280px);
+  padding: clamp(8px, 1vw, 14px);
+}
+
+.options-item {
+  gap: clamp(6px, 0.8vw, 12px);
+  padding: clamp(4px, 0.6vw, 10px) 0;
+}
+
+.options-label {
+  font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+  min-width: clamp(60px, 12vw, 90px);
+}
+
+.options-toggle {
+  font-size: clamp(0.6rem, 0.9vw, 0.8rem);
+}
+
+.toggle-slider {
+  width: clamp(24px, 4vw, 36px);
+  height: clamp(12px, 2vw, 18px);
+}
+
+.toggle-slider::after {
+  width: clamp(8px, 1.5vw, 14px);
+  height: clamp(8px, 1.5vw, 14px);
+}
+
+.options-select {
+  font-size: clamp(0.6rem, 0.9vw, 0.8rem);
+  padding: clamp(2px, 0.4vw, 5px) clamp(4px, 0.7vw, 10px);
+}
+
+/* Scale situation room panel */
+.situation-room-panel {
+  width: clamp(250px, 35vw, 400px);
+}
+
+.situation-room-title {
+  font-size: clamp(0.7rem, 1.2vw, 0.95rem);
+}
+
+.situation-room-content {
+  padding: clamp(10px, 1vw, 18px);
+  gap: clamp(8px, 1vw, 14px);
+}
+
+.situation-stat-card {
+  gap: clamp(8px, 1vw, 16px);
+  padding: clamp(10px, 1.2vw, 18px);
+}
+
+.situation-stat-icon {
+  font-size: clamp(1.2rem, 2vw, 2.2rem);
+  width: clamp(30px, 5vw, 45px);
+  height: clamp(30px, 5vw, 45px);
+}
+
+.situation-stat-label {
+  font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+}
+
+.situation-stat-value {
+  font-size: clamp(1rem, 2vw, 1.8rem);
+}
+
+/* Scale context menus */
+.context-menu {
+  min-width: clamp(180px, 25vw, 280px);
+}
+
+.context-menu-header {
+  padding: clamp(8px, 1vw, 12px);
+}
+
+.context-menu-title {
+  font-size: clamp(0.8rem, 1.2vw, 1rem);
+}
+
+.context-option {
+  padding: clamp(6px, 0.8vw, 10px) clamp(8px, 1.2vw, 14px);
+  font-size: clamp(0.7rem, 1vw, 0.85rem);
+}
+
+.context-option-icon {
+  font-size: clamp(0.9rem, 1.3vw, 1.2rem);
+}
+
+/* Scale placement banner */
+.place-banner {
+  padding: clamp(6px, 0.8vw, 12px) clamp(12px, 1.5vw, 24px);
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+  gap: clamp(6px, 0.8vw, 12px);
+}
+
+/* Scale drone markers */
+.drone-marker {
+  width: clamp(28px, 3vw, 42px);
+  height: clamp(28px, 3vw, 42px);
+  font-size: clamp(0.9rem, 1.5vw, 1.4rem);
+  border-width: clamp(1px, 0.2vw, 3px);
+}
+
+/* Scale hub markers */
+.hub-marker {
+  width: clamp(32px, 4vw, 48px);
+  height: clamp(32px, 4vw, 48px);
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  border-width: clamp(1px, 0.2vw, 3px);
+}
+
+/* Scale ground unit markers */
+.ground-unit-marker {
+  width: clamp(26px, 3vw, 40px);
+  height: clamp(26px, 3vw, 40px);
+  font-size: clamp(1rem, 1.5vw, 1.4rem);
+  border-width: clamp(1px, 0.2vw, 3px);
+}
+
+/* Scale popup/tooltip text */
+.leaflet-popup-content-wrapper {
+  font-size: clamp(0.7rem, 1vw, 0.9rem);
+  padding: clamp(6px, 0.8vw, 12px);
+}
+
+.hub-tooltip {
+  font-size: clamp(0.6rem, 0.8vw, 0.8rem);
+  padding: clamp(3px, 0.5vw, 6px) clamp(6px, 1vw, 12px) !important;
 }
 
 html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
@@ -93,7 +466,7 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 .hud-center {
   flex: 1;
   justify-content: center;
-  gap: 12px;
+  gap: clamp(8px, 1vw, 12px);
 }
 
 /* Right section - options panel */
@@ -101,12 +474,63 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   flex: 0 0 auto;
 }
 
-.logo { display: flex; align-items: center; gap: 10px; }
-.logo-icon { font-size: 1.5rem; filter: drop-shadow(0 0 8px var(--accent)); }
+/* Search bar section */
+.hud-search {
+  flex: 0 0 auto;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: clamp(6px, 0.8vw, 10px);
+  padding: clamp(2px, 0.4vw, 6px) clamp(8px, 1vw, 12px);
+  gap: clamp(4px, 0.5vw, 8px);
+  transition: all 0.2s ease;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+}
+
+.search-icon {
+  font-size: clamp(0.8rem, 1vw, 1rem);
+  opacity: 0.7;
+}
+
+.search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: clamp(0.7rem, 0.9vw, 0.85rem);
+  width: clamp(120px, 15vw, 200px);
+  min-width: 120px;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-input:focus {
+  color: var(--accent);
+}
+
+.logo { 
+  display: flex; 
+  align-items: center; 
+  gap: clamp(6px, 0.8vw, 12px); 
+}
+.logo-icon { 
+  font-size: clamp(1.2rem, 2vw, 1.8rem); 
+  filter: drop-shadow(0 0 8px var(--accent)); 
+}
 .logo-text { 
-  font-size: 1.1rem; 
+  font-size: clamp(0.9rem, 1.2vw, 1.3rem); 
   font-weight: 700; 
-  letter-spacing: 2px; 
+  letter-spacing: clamp(1px, 0.2vw, 2px); 
   text-transform: uppercase;
   background: linear-gradient(90deg, var(--accent), #00a8cc);
   -webkit-background-clip: text;
@@ -118,39 +542,45 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 .stat-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(6px, 0.8vw, 10px);
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  border-radius: clamp(6px, 0.8vw, 10px);
+  padding: clamp(4px, 0.6vw, 8px) clamp(8px, 1vw, 14px);
+  font-size: clamp(0.7rem, 0.8vw, 0.85rem);
   transition: all 0.2s ease;
 }
 .stat-pill:hover {
   border-color: var(--accent);
   box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
 }
-.stat-icon { font-size: 1rem; }
+.stat-icon { 
+  font-size: clamp(0.8rem, 1.2vw, 1.1rem); 
+}
 .stat-value { 
   font-weight: 700; 
   color: var(--accent);
   font-family: 'Consolas', monospace;
+  font-size: clamp(0.8rem, 1.4vw, 1.1rem);
 }
-.stat-label { color: var(--text-muted); }
+.stat-label { 
+  color: var(--text-muted);
+  font-size: clamp(0.6rem, 0.9vw, 0.75rem);
+}
 
 /* Situation Room Button */
 .btn-situation-room {
   background: linear-gradient(135deg, rgba(0, 217, 255, 0.15), rgba(0, 168, 204, 0.1));
   border: 1px solid var(--accent);
   color: var(--accent);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 0.78rem;
+  border-radius: clamp(6px, 0.8vw, 10px);
+  padding: clamp(4px, 0.6vw, 8px) clamp(10px, 1.2vw, 16px);
+  font-size: clamp(0.65rem, 0.7vw, 0.85rem);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   white-space: nowrap;
-  letter-spacing: 0.5px;
+  letter-spacing: clamp(0.3px, 0.1vw, 0.8px);
 }
 
 .btn-situation-room:hover {
@@ -167,11 +597,11 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 .situation-room-panel {
   position: absolute;
   top: calc(var(--hud-h) + 10px);
-  right: 20px;
-  width: 320px;
+  right: clamp(10px, 2vw, 20px);
+  width: clamp(250px, 35vw, 400px);
   background: linear-gradient(180deg, rgba(20,24,34,0.98) 0%, rgba(10,12,16,0.98) 100%);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: clamp(10px, 1.2vw, 14px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 217, 255, 0.1);
   z-index: 1001;
   overflow: hidden;
@@ -198,34 +628,34 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 16px;
+  padding: clamp(10px, 1vw, 16px) clamp(12px, 1.2vw, 18px);
   background: linear-gradient(90deg, rgba(0, 217, 255, 0.1), transparent);
   border-bottom: 1px solid var(--border);
 }
 
 .situation-room-title {
-  font-size: 0.9rem;
+  font-size: clamp(0.75rem, 1vw, 1rem);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.1vw, 1px);
   text-transform: uppercase;
 }
 
 .situation-room-content {
-  padding: 16px;
+  padding: clamp(12px, 1.2vw, 18px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: clamp(10px, 1vw, 16px);
 }
 
 .situation-stat-card {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: clamp(10px, 1.2vw, 18px);
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: clamp(8px, 1vw, 12px);
+  padding: clamp(12px, 1.2vw, 18px);
   transition: all 0.2s ease;
 }
 
@@ -237,33 +667,33 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 }
 
 .situation-stat-icon {
-  font-size: 1.8rem;
-  width: 40px;
-  height: 40px;
+  font-size: clamp(1.2rem, 2vw, 2.2rem);
+  width: clamp(30px, 5vw, 45px);
+  height: clamp(30px, 5vw, 45px);
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(0, 217, 255, 0.1);
-  border-radius: 8px;
+  border-radius: clamp(6px, 0.8vw, 10px);
 }
 
 .situation-stat-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: clamp(3px, 0.4vw, 6px);
 }
 
 .situation-stat-label {
-  font-size: 0.72rem;
+  font-size: clamp(0.6rem, 0.8vw, 0.8rem);
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: clamp(0.3px, 0.05vw, 0.8px);
   font-weight: 600;
 }
 
 .situation-stat-value {
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 2vw, 1.8rem);
   font-weight: 700;
   color: var(--accent);
   font-family: 'Consolas', monospace;
@@ -280,6 +710,43 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   100% { transform: scale(1); }
 }
 
+/* ── Sidebar Toggle Button ────────────────────────────────────────────────── */
+.btn-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 0.5vw, 8px);
+  background: linear-gradient(135deg, rgba(0, 217, 255, 0.15), rgba(0, 168, 204, 0.1));
+  border: 1px solid var(--accent);
+  border-radius: clamp(4px, 0.6vw, 8px);
+  color: var(--accent);
+  padding: clamp(2px, 0.4vw, 6px) clamp(6px, 0.8vw, 12px);
+  font-size: clamp(0.6rem, 0.8vw, 0.75rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  z-index: 1001;
+}
+
+.btn-sidebar-toggle:hover {
+  background: linear-gradient(135deg, rgba(0, 217, 255, 0.25), rgba(0, 168, 204, 0.15));
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-sidebar-toggle:active {
+  transform: translateY(0);
+}
+
+.btn-sidebar-toggle__icon {
+  font-size: clamp(0.7rem, 1vw, 0.9rem);
+  transition: transform 0.3s ease;
+}
+
+.btn-sidebar-toggle--collapsed .btn-sidebar-toggle__icon {
+  transform: rotate(180deg);
+}
+
 /* ── Sidebar Overlay ─────────────────────────────────────────────────────── */
 #sidebar {
   position: absolute;
@@ -294,13 +761,26 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   flex-direction: column;
   overflow-y: auto;
   z-index: 900;
+  transition: transform 0.3s ease, width 0.3s ease, min-width 0.3s ease;
+}
+
+#sidebar.sidebar--collapsed {
+  transform: translateX(calc(-1 * var(--sidebar-w)));
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .sidebar-scroll {
-  padding: 16px 0;
+  padding: clamp(12px, 1vw, 18px) 0;
   display: flex;
   flex-direction: column;
   min-height: 100%;
+}
+
+/* Sidebar collapsed state - hide scroll content */
+#sidebar.sidebar--collapsed .sidebar-scroll {
+  display: none;
 }
 
 #sidebar header {
@@ -311,18 +791,18 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px;
+  padding: clamp(12px, 1vw, 18px);
   border-bottom: 1px solid var(--border);
 }
 
 /* ── Badges ───────────────────────────────────────────────────────────────── */
 .badge {
-  font-size: .7rem;
+  font-size: clamp(0.6rem, 0.8vw, 0.75rem);
   font-weight: 600;
-  padding: 3px 8px;
+  padding: clamp(2px, 0.4vw, 5px) clamp(5px, 0.8vw, 10px);
   border-radius: 999px;
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: clamp(0.3px, 0.05vw, 0.8px);
 }
 .badge--connecting { background: var(--surface2); color: var(--text-muted); }
 .badge--live       { background: rgba(0, 255, 136, 0.15); color: var(--green); box-shadow: 0 0 8px rgba(0, 255, 136, 0.3); }
@@ -330,15 +810,72 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 
 /* ── Section title ────────────────────────────────────────────────────────── */
 .section-title {
-  font-size: .7rem;
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.1vw, 1px);
   color: var(--text-muted);
-  padding: 16px 16px 6px;
+  padding: clamp(12px, 1vw, 18px) clamp(12px, 1vw, 18px) clamp(4px, 0.5vw, 8px);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: clamp(4px, 0.5vw, 8px);
+}
+
+/* Collapsible section title */
+.section-title--collapsible {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.section-title--collapsible:hover {
+  color: var(--accent);
+}
+
+.section-title__text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 0.5vw, 8px);
+}
+
+.section-title__chevron {
+  font-size: clamp(0.5rem, 0.6vw, 0.65rem);
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(12px, 1.5vw, 16px);
+  height: clamp(12px, 1.5vw, 16px);
+}
+
+.section-title--collapsible.section-title--collapsed .section-title__chevron {
+  transform: rotate(-90deg);
+}
+
+/* Section content with collapse animation */
+.section-content {
+  max-height: 2000px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.section-title--collapsed + .section-content,
+.section-content.section-content--collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+/* Ensure buttons in collapsible sections stay visible */
+.section-title--collapsible .btn-icon {
+  pointer-events: auto;
+}
+
+.section-title--collapsible .btn-icon:hover {
+  color: var(--accent);
 }
 
 /* ── Hub list in sidebar ──────────────────────────────────────────────────── */
@@ -346,8 +883,8 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 0 10px;
+  gap: clamp(4px, 0.5vw, 8px);
+  padding: 0 clamp(8px, 1vw, 14px);
 }
 
 .hub-card {
@@ -734,11 +1271,11 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   right: 0;
   display: flex;
   align-items: stretch;
-  height: var(--rts-h);
+  height: clamp(80px, 12vh, 140px);
   background: linear-gradient(0deg, rgba(20,24,34,0.98) 0%, rgba(20,24,34,0.9) 100%);
   border-top: 1px solid var(--border);
-  padding: 10px 16px;
-  gap: 16px;
+  padding: clamp(6px, 0.8vw, 12px);
+  gap: clamp(6px, 0.8vw, 12px);
   z-index: 900;
   backdrop-filter: blur(10px);
 }
@@ -746,8 +1283,8 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 /* Action Icons */
 #action-icons {
   display: flex;
-  gap: 8px;
-  padding-right: 16px;
+  gap: clamp(4px, 0.5vw, 8px);
+  padding-right: clamp(8px, 1vw, 16px);
   border-right: 1px solid var(--border);
 }
 
@@ -755,12 +1292,12 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  width: 60px;
-  padding: 8px 6px;
+  gap: clamp(2px, 0.3vw, 4px);
+  width: clamp(45px, 5vw, 70px);
+  padding: clamp(6px, 0.8vw, 10px) clamp(4px, 0.5vw, 8px);
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: clamp(8px, 1vw, 12px);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -799,12 +1336,12 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 }
 
 .action-icon__icon {
-  font-size: 1.6rem;
+  font-size: clamp(1.2rem, 2.5vw, 2rem);
   line-height: 1;
 }
 
 .action-icon__label {
-  font-size: 0.65rem;
+  font-size: clamp(0.55rem, 0.8vw, 0.75rem);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -819,7 +1356,7 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   position: absolute;
   top: 2px;
   right: 4px;
-  font-size: 0.55rem;
+  font-size: clamp(0.45rem, 0.6vw, 0.6rem);
   font-weight: 700;
   color: var(--text-muted);
   background: var(--surface3);
@@ -838,9 +1375,10 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   align-items: center;
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 16px;
-  min-width: 300px;
+  border-radius: clamp(8px, 1.5vw, 12px);
+  padding: clamp(8px, 1vw, 16px);
+  min-width: clamp(200px, 25vw, 350px);
+  transition: all 0.3s ease;
 }
 
 .selection-panel__empty {
@@ -938,25 +1476,27 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-left: 16px;
+  padding-left: clamp(8px, 1vw, 16px);
   border-left: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .mission-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: clamp(4px, 0.5vw, 8px);
+  padding: clamp(6px, 0.8vw, 10px) clamp(12px, 1.5vw, 20px);
   background: linear-gradient(135deg, var(--accent2), #ff4400);
   border: none;
-  border-radius: 8px;
+  border-radius: clamp(6px, 0.8vw, 8px);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: clamp(0.7rem, 0.8vw, 0.85rem);
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: clamp(0.5px, 0.1vw, 1px);
+  white-space: nowrap;
 }
 
 .mission-btn:hover {
@@ -965,7 +1505,7 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
 }
 
 .mission-btn__icon {
-  font-size: 1.2rem;
+  font-size: clamp(1rem, 1.2vw, 1.2rem);
   font-weight: 400;
 }
 
@@ -1868,6 +2408,59 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   color: #000;
   border-color: #00ff00;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+}
+
+/* EW Signal Area Card Styling */
+.aoi-card--ew-signal {
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.1), rgba(120, 50, 180, 0.05));
+}
+
+.aoi-card--ew-signal::before {
+  background: #9d4edd;
+}
+
+.aoi-card--ew-signal:hover {
+  border-color: #9d4edd;
+  box-shadow: 0 0 15px rgba(157, 78, 221, 0.15);
+}
+
+.aoi-card--ew-signal.selected {
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.2), rgba(120, 50, 180, 0.1));
+  border-color: #9d4edd;
+  box-shadow: 0 0 20px rgba(157, 78, 221, 0.25);
+}
+
+.aoi-card--ew-signal.selected::before {
+  opacity: 1;
+}
+
+/* EW Signal Badge */
+.aoi-card__badge--ew-signal {
+  background: linear-gradient(135deg, #9d4edd, #7b2cbf);
+  color: #fff;
+}
+
+.aoi-card--ew-signal .aoi-edit-instructions {
+  background: rgba(157, 78, 221, 0.15);
+  border-color: rgba(157, 78, 221, 0.3);
+  color: #9d4edd;
+}
+
+.aoi-card--ew-signal .aoi-edit-instructions:hover {
+  background: #9d4edd;
+  color: #fff;
+  border-color: #9d4edd;
+  box-shadow: 0 0 10px rgba(157, 78, 221, 0.4);
+}
+
+/* EW Signal Area Polygon on Map */
+.aoi-polygon[data-ew-signal] {
+  fill: rgba(157, 78, 221, 0.2) !important;
+  stroke: #9d4edd !important;
+}
+
+.aoi-polygon[data-ew-signal]:hover {
+  fill: rgba(157, 78, 221, 0.35) !important;
 }
 
 /* AOI Polygon Selection Styling */
@@ -3093,6 +3686,46 @@ input[type="color"]#highlight-color-picker::-moz-color-swatch {
 
 #naval-selection-content .selection-stat__icon {
   color: #0088cc;
+}
+
+/* EW Signal Area selection panel */
+#ew-selection-content {
+  border-left: 3px solid #9d4edd;
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.05), transparent);
+}
+
+#ew-selection-content .selection-stat__icon {
+  color: #9d4edd;
+}
+
+#ew-selection-content .selection-name {
+  color: #9d4edd;
+}
+
+/* Selection info sections for EW Signal Area */
+.selection-info-section {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.selection-info-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.selection-info-text {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Water placement mode cursor */

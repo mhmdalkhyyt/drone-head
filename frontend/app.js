@@ -30,7 +30,6 @@ const state = {
   activeHubId:   null, // hub whose panel is open
   focusedHubId:  null, // currently focused hub (for map highlight)
   placingHub:    false, // hub placement mode active?
-  placingDrone:  false, // drone placement mode active?
   placingGroundUnit: false, // ground unit placement mode
   movingGroundUnit: null, // ground unit being moved
   
@@ -54,6 +53,11 @@ const state = {
   
   // No-Go Zone drawing mode
   drawingNoGoZone: false, // no-go zone drawing mode active?
+  
+  // EW Signal Area drawing mode (box/rectangle)
+  drawingEwArea: false, // EW area drawing mode active?
+  ewAreaFirstCorner: null, // first corner [lat, lng]
+  ewAreaPreviewLayer: null, // Leaflet rectangle for preview
   
   // AOI Highlight mode
   highlightingAoi: false, // highlight mode active?
@@ -88,6 +92,11 @@ const state = {
   placingNavalUnit: false, // naval unit placement mode
   selectedNavalUnitType: 'fast-boat', // current naval unit type for spawning
   movingNavalUnit: null, // naval unit being moved
+  
+  // Unit panel state
+  selectedUnitId: null, // currently selected unit (drone/ground/naval)
+  selectedUnitType: null, // 'drone', 'ground', or 'naval'
+  movingUnitId: null, // unit currently being moved
 };
 
 /* ── Map setup ───────────────────────────────────────────────── */
@@ -494,6 +503,9 @@ function selectGroundUnit(id) {
   }
   renderGroundUnitList();
   renderGroundUnitSelectionPanel();
+  
+  // Open unit panel on the right
+  openUnitPanel(id, 'ground');
 }
 
 function enterGroundUnitMoveMode(unitId) {
@@ -725,6 +737,9 @@ function selectDrone(id) {
   }
   renderSidebar();
   renderSelectionPanel();
+  
+  // Open unit panel on the right
+  openUnitPanel(id, 'drone');
 }
 
 function renderSelectionPanel() {
@@ -781,6 +796,7 @@ function renderHubPanel() {
   renderInfoTab(hubId);
   renderDroneList(hubId);
   loadWaypointsForHub(hubId);
+  renderSidebar();
 }
 
 function switchTab(name) {
@@ -794,136 +810,620 @@ document.querySelectorAll('.hub-tab').forEach(btn => {
 
 document.getElementById('hub-panel-close').addEventListener('click', closeHubPanel);
 
-/* ── Fleet and Mission rendering ─────────────────────────────── */
-function renderFleetList(hubId) {
-  const container = document.getElementById('fleet-list');
-  const fleets = Object.values(state.fleets).filter(f => f.hubId === hubId);
-  container.innerHTML = '';
+/* ── AoI Panel ───────────────────────────────────────────────── */
+const aoiPanel = document.getElementById('aoi-panel');
+const aoiPanelTitle = document.getElementById('aoi-panel-title');
+
+function openAoiPanel(aoiId) {
+  state.activeAoiId = aoiId;
+  const aoi = state.aois[aoiId];
+  if (!aoi) return;
   
-  if (!fleets.length) {
-    container.innerHTML = '<p class="empty-hint">No fleets yet.</p>';
-    return;
+  aoiPanelTitle.textContent = aoi.name;
+  aoiPanel.classList.remove('hidden');
+  renderAoiPanel(aoiId);
+}
+
+function closeAoiPanel() {
+  aoiPanel.classList.add('hidden');
+  state.activeAoiId = null;
+}
+
+function renderAoiPanel(aoiId) {
+  const aoi = state.aois[aoiId];
+  if (!aoi) { closeAoiPanel(); return; }
+  
+  aoiPanelTitle.textContent = aoi.name;
+  
+  // Details tab
+  document.getElementById('aoi-info-id').textContent = aoi.id;
+  document.getElementById('aoi-info-name').value = aoi.name;
+  
+  // Type
+  let typeLabel = 'Area of Interest';
+  if (aoi.isNoGoZone) typeLabel = '⛔ No-Go Zone';
+  else if (aoi.isTarget) typeLabel = '🎯 Target Area';
+  else if (aoi.isEwSignalArea) typeLabel = '📡 EW Signal Area';
+  document.getElementById('aoi-info-type').textContent = typeLabel;
+  
+  // Coordinates
+  const coordsText = aoi.coordinates.map(([lat, lng]) => `${lat.toFixed(4)}, ${lng.toFixed(4)}`).join('\n');
+  document.getElementById('aoi-info-coords').textContent = coordsText;
+  
+  // Points count
+  document.getElementById('aoi-info-points').textContent = aoi.coordinates.length + ' points';
+  
+  // Area size
+  const size = calculateAoiSize(aoi.coordinates);
+  document.getElementById('aoi-info-size').textContent = size > 0 ? `${size.toFixed(2)} km²` : '—';
+  
+  // Center
+  const center = getPolygonCenter(aoi.coordinates);
+  if (center) {
+    document.getElementById('aoi-info-center').textContent = `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
   }
   
-  fleets.forEach(fleet => {
-    const card = document.createElement('div');
-    card.className = 'fleet-card';
-    card.dataset.id = fleet.id;
-    
-    const mission = fleet.currentMissionId ? state.missions[fleet.currentMissionId] : null;
-    const statusLabel = fleet.status === 'on-mission'
-      ? `<span class="fleet-status fleet-status--busy">On Mission${mission ? ': ' + mission.title : ''}</span>`
-      : `<span class="fleet-status fleet-status--idle">Idle</span>`;
-    
-    const droneChips = fleet.droneIds.map(did => {
-      const d = state.drones[did];
-      const label = d ? d.name : did;
-      return `<span class="drone-chip" data-fleet="${fleet.id}" data-drone="${did}">${label} <button class="chip-remove" data-fleet="${fleet.id}" data-drone="${did}" title="Remove">×</button></span>`;
-    }).join('');
-    
-    const available = Object.values(state.drones).filter(d => !fleet.droneIds.includes(d.id));
-    const opts = available.map(d => `<option value="${d.id}">${d.name} (${d.id})</option>`).join('');
-    
-    card.innerHTML = `
-      <div class="fleet-card__header">
-        <span class="fleet-card__name">${fleet.name}</span>
-        <div class="fleet-card__actions">
-          ${statusLabel}
-          <button class="btn-xs fleet-delete" data-id="${fleet.id}" title="Delete fleet">🗑</button>
-        </div>
-      </div>
-      <div class="fleet-card__drones">
-        ${droneChips || '<span class="empty-hint">No drones assigned.</span>'}
-      </div>
-      ${available.length ? `
-      <div class="fleet-card__add-drone">
-        <select class="drone-select" data-fleet="${fleet.id}">
-          <option value="">— add drone —</option>
-          ${opts}
-        </select>
-      </div>` : ''}
-    `;
-    container.appendChild(card);
-  });
+  // Target location (if applicable)
+  const targetRow = document.getElementById('aoi-info-target-row');
+  if (aoi.isTarget && aoi.targetLocation) {
+    targetRow.classList.remove('hidden');
+    document.getElementById('aoi-info-target').textContent = `${aoi.targetLocation.lat.toFixed(4)}, ${aoi.targetLocation.lng.toFixed(4)}`;
+  } else {
+    targetRow.classList.add('hidden');
+  }
   
-  container.querySelectorAll('.fleet-delete').forEach(btn => {
-    btn.addEventListener('click', () => deleteFleet(hubId, btn.dataset.id));
+  // Ruleset tab
+  document.getElementById('aoi-ruleset-editor').value = aoi.ruleset || '';
+}
+
+function switchAoiTab(name) {
+  document.querySelectorAll('.hub-tab').forEach(btn => {
+    if (btn.closest('#aoi-panel')) {
+      btn.classList.toggle('active', btn.dataset.tab === name);
+    }
   });
-  container.querySelectorAll('.chip-remove').forEach(btn => {
-    btn.addEventListener('click', () => removeDroneFromFleet(hubId, btn.dataset.fleet, btn.dataset.drone));
+  document.querySelectorAll('.hub-tab-content').forEach(el => {
+    if (el.closest('#aoi-panel')) {
+      el.classList.toggle('active', el.id === `tab-aoi-${name}`);
+    }
   });
-  container.querySelectorAll('.drone-select').forEach(sel => {
-    sel.addEventListener('change', () => {
-      if (sel.value) {
-        addDroneToFleet(hubId, sel.dataset.fleet, sel.value);
-        sel.value = '';
-      }
+}
+
+document.getElementById('aoi-panel-close').addEventListener('click', closeAoiPanel);
+
+/* ── Unit Panel (right drawer for drones, ground, naval units) ─ */
+const unitPanel = document.getElementById('unit-panel');
+const unitPanelTitle = document.getElementById('unit-panel-title');
+
+function openUnitPanel(unitId, unitType) {
+  state.selectedUnitId = unitId;
+  state.selectedUnitType = unitType;
+  
+  if (!unitPanel || !unitPanelTitle) return;
+  
+  // Hide hub and AOI panels
+  closeHubPanel();
+  closeAoiPanel();
+  
+  unitPanel.classList.remove('hidden');
+  
+  // Hide all detail sections first
+  document.getElementById('drone-details').classList.add('hidden');
+  document.getElementById('ground-details').classList.add('hidden');
+  document.getElementById('naval-details').classList.add('hidden');
+  
+  // Hide all action sections first
+  document.getElementById('drone-actions').classList.add('hidden');
+  document.getElementById('ground-actions').classList.add('hidden');
+  document.getElementById('naval-actions').classList.add('hidden');
+  
+  if (unitType === 'drone') {
+    const drone = state.drones[unitId];
+    if (!drone) { closeUnitPanel(); return; }
+    
+    unitPanelTitle.textContent = drone.name;
+    document.getElementById('drone-details').classList.remove('hidden');
+    document.getElementById('drone-actions').classList.remove('hidden');
+    
+    // Populate drone details
+    document.getElementById('drone-info-id').textContent = drone.id;
+    document.getElementById('drone-info-name').value = drone.name;
+    document.getElementById('drone-info-status').textContent = drone.status;
+    document.getElementById('drone-info-battery').textContent = drone.battery + '%';
+    document.getElementById('drone-info-altitude').textContent = drone.altitude + ' m';
+    document.getElementById('drone-info-speed').textContent = drone.speed + ' km/h';
+    document.getElementById('drone-info-coords').textContent = `${drone.lat.toFixed(4)}, ${drone.lng.toFixed(4)}`;
+    
+    // Hub and fleet assignment
+    const hubRow = document.getElementById('drone-info-hub-row');
+    const fleetRow = document.getElementById('drone-info-fleet-row');
+    
+    if (drone.hubId && state.hubs[drone.hubId]) {
+      hubRow.classList.remove('hidden');
+      document.getElementById('drone-info-hub').textContent = state.hubs[drone.hubId].name;
+    } else {
+      hubRow.classList.add('hidden');
+    }
+    
+    const fleet = Object.values(state.fleets).find(f => f.droneIds.includes(drone.id));
+    if (fleet) {
+      fleetRow.classList.remove('hidden');
+      document.getElementById('drone-info-fleet').textContent = fleet.name;
+    } else {
+      fleetRow.classList.add('hidden');
+    }
+    
+    // Show/hide simulation buttons
+    const simBtn = document.getElementById('btn-simulate-drone');
+    const stopSimBtn = document.getElementById('btn-stop-simulation');
+    if (state.simulatingDrone === unitId) {
+      simBtn.style.display = 'none';
+      stopSimBtn.style.display = 'inline-block';
+    } else {
+      simBtn.style.display = 'inline-block';
+      stopSimBtn.style.display = 'none';
+    }
+    
+    // Info tab
+    document.getElementById('unit-info-created').textContent = drone.createdAt ? new Date(drone.createdAt).toLocaleString() : '—';
+    document.getElementById('unit-info-updated').textContent = drone.updatedAt ? new Date(drone.updatedAt).toLocaleString() : '—';
+    
+  } else if (unitType === 'ground') {
+    const unit = state.groundUnits[unitId];
+    if (!unit) { closeUnitPanel(); return; }
+    
+    unitPanelTitle.textContent = unit.name;
+    document.getElementById('ground-details').classList.remove('hidden');
+    document.getElementById('ground-actions').classList.remove('hidden');
+    
+    // Populate ground unit details
+    document.getElementById('ground-info-id').textContent = unit.id;
+    document.getElementById('ground-info-name').value = unit.name;
+    document.getElementById('ground-info-type').textContent = unit.type;
+    document.getElementById('ground-info-status').textContent = unit.status;
+    document.getElementById('ground-info-battery').textContent = unit.battery + '%';
+    document.getElementById('ground-info-speed').textContent = unit.speed + ' km/h';
+    document.getElementById('ground-info-coords').textContent = `${unit.lat.toFixed(4)}, ${unit.lng.toFixed(4)}`;
+    document.getElementById('ground-info-road').textContent = unit.onRoad ? 'On Road' : 'Off Road';
+    
+    // Show/hide move buttons
+    const moveBtn = document.getElementById('btn-move-ground');
+    const cancelBtn = document.getElementById('btn-cancel-ground-move');
+    if (state.movingUnitId === unitId) {
+      moveBtn.style.display = 'none';
+      cancelBtn.style.display = 'inline-block';
+    } else {
+      moveBtn.style.display = 'inline-block';
+      cancelBtn.style.display = 'none';
+    }
+    
+    // Info tab
+    document.getElementById('unit-info-created').textContent = unit.createdAt ? new Date(unit.createdAt).toLocaleString() : '—';
+    document.getElementById('unit-info-updated').textContent = unit.updatedAt ? new Date(unit.updatedAt).toLocaleString() : '—';
+    
+  } else if (unitType === 'naval') {
+    const unit = state.navalUnits[unitId];
+    if (!unit) { closeUnitPanel(); return; }
+    
+    const typeInfo = getNavalUnitTypeInfo(unit.type);
+    unitPanelTitle.textContent = unit.name;
+    document.getElementById('naval-details').classList.remove('hidden');
+    document.getElementById('naval-actions').classList.remove('hidden');
+    
+    // Populate naval unit details
+    document.getElementById('naval-info-id').textContent = unit.id;
+    document.getElementById('naval-info-name').value = unit.name;
+    document.getElementById('naval-info-type').textContent = typeInfo.name;
+    document.getElementById('naval-info-status').textContent = unit.status;
+    document.getElementById('naval-info-battery').textContent = unit.battery + '%';
+    document.getElementById('naval-info-speed').textContent = unit.speed + ' km/h';
+    document.getElementById('naval-info-coords').textContent = `${unit.lat.toFixed(4)}, ${unit.lng.toFixed(4)}`;
+    
+    // Show/hide move buttons
+    const moveBtn = document.getElementById('btn-move-naval');
+    const cancelBtn = document.getElementById('btn-cancel-naval-move');
+    if (state.movingUnitId === unitId) {
+      moveBtn.style.display = 'none';
+      cancelBtn.style.display = 'inline-block';
+    } else {
+      moveBtn.style.display = 'inline-block';
+      cancelBtn.style.display = 'none';
+    }
+    
+    // Info tab
+    document.getElementById('unit-info-created').textContent = unit.createdAt ? new Date(unit.createdAt).toLocaleString() : '—';
+    document.getElementById('unit-info-updated').textContent = unit.updatedAt ? new Date(unit.updatedAt).toLocaleString() : '—';
+  }
+}
+
+function closeUnitPanel() {
+  if (unitPanel) unitPanel.classList.add('hidden');
+  state.selectedUnitId = null;
+  state.selectedUnitType = null;
+  state.movingUnitId = null;
+}
+
+function selectUnit(unitId, unitType) {
+  const unit = unitType === 'drone' ? state.drones[unitId] :
+               unitType === 'ground' ? state.groundUnits[unitId] :
+               state.navalUnits[unitId];
+  
+  if (!unit) return;
+  
+  // Fly to unit location
+  map.flyTo([unit.lat, unit.lng], 15, { duration: 1 });
+  
+  // Open unit panel
+  openUnitPanel(unitId, unitType);
+}
+
+// Unit panel close button
+if (unitPanel) {
+  unitPanel.querySelector('#unit-panel-close')?.addEventListener('click', closeUnitPanel);
+}
+
+// Unit panel tab switching
+document.querySelectorAll('#unit-panel .hub-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.dataset.tab;
+    document.querySelectorAll('#unit-panel .hub-tab').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('#unit-panel .hub-tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-unit-${tabName}`));
+  });
+});
+
+/* ── Unit Panel Event Handlers ───────────────────────────────── */
+
+// Drone handlers
+document.getElementById('btn-rename-drone')?.addEventListener('click', async () => {
+  const newName = document.getElementById('drone-info-name').value.trim();
+  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'drone') return;
+  
+  const drone = state.drones[state.selectedUnitId];
+  if (drone) {
+    drone.name = newName;
+    // Update via API if needed
+    await fetch(`${API_BASE}/drones/${state.selectedUnitId}/location`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
     });
-  });
-}
+    openUnitPanel(state.selectedUnitId, 'drone');
+    showFeedback('Drone renamed!', 'success');
+  }
+});
 
-const MISSION_TYPE_ICONS = {
-  general: '📋', surveillance: '👁', delivery: '📦', search: '🔍', inspection: '🔧'
-};
+document.getElementById('btn-simulate-drone')?.addEventListener('click', () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
+  enterSimulationMode(state.selectedUnitId);
+});
 
-function renderMissionList(hubId) {
-  const ol = document.getElementById('mission-list');
-  const missions = Object.values(state.missions).filter(m => m.hubId === hubId)
-    .sort((a, b) => a.priority - b.priority || a.createdAt.localeCompare(b.createdAt));
-  ol.innerHTML = '';
+document.getElementById('btn-stop-simulation')?.addEventListener('click', async () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
+  await stopSimulation(state.selectedUnitId);
+  exitSimulationMode();
+  openUnitPanel(state.selectedUnitId, 'drone');
+});
+
+// Ground unit handlers
+document.getElementById('btn-rename-ground')?.addEventListener('click', async () => {
+  const newName = document.getElementById('ground-info-name').value.trim();
+  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'ground') return;
   
-  if (!missions.length) {
-    ol.innerHTML = '<li class="empty-hint" style="list-style:none;padding:8px 0">No missions queued.</li>';
+  const unit = state.groundUnits[state.selectedUnitId];
+  if (unit) {
+    unit.name = newName;
+    await fetch(`${API_BASE}/ground-units/${state.selectedUnitId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+    openUnitPanel(state.selectedUnitId, 'ground');
+    showFeedback('Ground unit renamed!', 'success');
+  }
+});
+
+document.getElementById('btn-move-ground')?.addEventListener('click', () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'ground') return;
+  state.movingUnitId = state.selectedUnitId;
+  map.getContainer().style.cursor = 'crosshair';
+  placeBanner.innerHTML = `🎯 Click on map to set destination for ${state.groundUnits[state.selectedUnitId].name} — <button id="btn-cancel-place" class="btn-xs">Cancel</button>`;
+  placeBanner.classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-ground-move')?.addEventListener('click', () => {
+  state.movingUnitId = null;
+  map.getContainer().style.cursor = '';
+  if (placeBanner) placeBanner.classList.add('hidden');
+  openUnitPanel(state.selectedUnitId, 'ground');
+});
+
+// Naval unit handlers
+document.getElementById('btn-rename-naval')?.addEventListener('click', async () => {
+  const newName = document.getElementById('naval-info-name').value.trim();
+  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'naval') return;
+  
+  const unit = state.navalUnits[state.selectedUnitId];
+  if (unit) {
+    unit.name = newName;
+    await fetch(`${API_BASE}/naval-units/${state.selectedUnitId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+    openUnitPanel(state.selectedUnitId, 'naval');
+    showFeedback('Naval unit renamed!', 'success');
+  }
+});
+
+document.getElementById('btn-move-naval')?.addEventListener('click', () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'naval') return;
+  state.movingUnitId = state.selectedUnitId;
+  map.getContainer().style.cursor = 'crosshair';
+  placeBanner.innerHTML = `🚤 Click on water to set destination for ${state.navalUnits[state.selectedUnitId].name} — <button id="btn-cancel-place" class="btn-xs">Cancel</button>`;
+  placeBanner.classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-naval-move')?.addEventListener('click', () => {
+  state.movingUnitId = null;
+  map.getContainer().style.cursor = '';
+  if (placeBanner) placeBanner.classList.add('hidden');
+  openUnitPanel(state.selectedUnitId, 'naval');
+});
+
+// Delete unit handler
+document.getElementById('btn-delete-unit')?.addEventListener('click', async () => {
+  if (!state.selectedUnitId || !state.selectedUnitType) return;
+  
+  const unit = state.selectedUnitType === 'drone' ? state.drones[state.selectedUnitId] :
+               state.selectedUnitType === 'ground' ? state.groundUnits[state.selectedUnitId] :
+               state.navalUnits[state.selectedUnitId];
+  
+  if (!unit || !confirm(`Delete "${unit.name}"?`)) return;
+  
+  const endpoints = {
+    'drone': `${API_BASE}/drones/${state.selectedUnitId}`,
+    'ground': `${API_BASE}/ground-units/${state.selectedUnitId}`,
+    'naval': `${API_BASE}/naval-units/${state.selectedUnitId}`
+  };
+  
+  await fetch(endpoints[state.selectedUnitType], { method: 'DELETE' });
+  closeUnitPanel();
+  showFeedback('Unit deleted', 'success');
+});
+
+// Center on map handler
+document.getElementById('btn-center-unit-map')?.addEventListener('click', () => {
+  if (!state.selectedUnitId || !state.selectedUnitType) return;
+  
+  const unit = state.selectedUnitType === 'drone' ? state.drones[state.selectedUnitId] :
+               state.selectedUnitType === 'ground' ? state.groundUnits[state.selectedUnitId] :
+               state.navalUnits[state.selectedUnitId];
+  
+  if (unit) {
+    map.flyTo([unit.lat, unit.lng], 16, { duration: 1 });
+    showFeedback('Centered on unit', 'success');
+  }
+});
+
+// Action panel handlers for drone
+document.getElementById('action-drone-view')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
+    map.flyTo([state.drones[state.selectedUnitId].lat, state.drones[state.selectedUnitId].lng], 16);
+  }
+});
+
+document.getElementById('action-drone-patrol')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
+    enterSimulationMode(state.selectedUnitId);
+  }
+});
+
+document.getElementById('action-drone-surveillance')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
+    enterSimulationMode(state.selectedUnitId);
+  }
+});
+
+document.getElementById('action-drone-return')?.addEventListener('click', async () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
+  const d = state.drones[state.selectedUnitId];
+  let nearestHub = null;
+  let minDist = Infinity;
+  Object.values(state.hubs).forEach(h => {
+    const dist = Math.sqrt(Math.pow(h.lat - d.lat, 2) + Math.pow(h.lng - d.lng, 2));
+    if (dist < minDist) { minDist = dist; nearestHub = h; }
+  });
+  if (nearestHub) {
+    await startSimulation(state.selectedUnitId, nearestHub.lat, nearestHub.lng, 40);
+    showFeedback(`${d.name} returning to ${nearestHub.name}`, 'success');
+  }
+});
+
+document.getElementById('action-drone-emergency')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
+    exitSimulationMode();
+    showFeedback('Emergency landing initiated', 'warning');
+  }
+});
+
+// Action panel handlers for ground
+document.getElementById('action-ground-view')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'ground') {
+    map.flyTo([state.groundUnits[state.selectedUnitId].lat, state.groundUnits[state.selectedUnitId].lng], 16);
+  }
+});
+
+document.getElementById('action-ground-move')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'ground') {
+    document.getElementById('btn-move-ground')?.click();
+  }
+});
+
+document.getElementById('action-ground-stop')?.addEventListener('click', async () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'ground') return;
+  await fetch(`${API_BASE}/ground-units/${state.selectedUnitId}/move`, { method: 'DELETE' });
+  showFeedback('Unit stopped', 'success');
+});
+
+// Action panel handlers for naval
+document.getElementById('action-naval-view')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'naval') {
+    map.flyTo([state.navalUnits[state.selectedUnitId].lat, state.navalUnits[state.selectedUnitId].lng], 16);
+  }
+});
+
+document.getElementById('action-naval-move')?.addEventListener('click', () => {
+  if (state.selectedUnitId && state.selectedUnitType === 'naval') {
+    document.getElementById('btn-move-naval')?.click();
+  }
+});
+
+document.getElementById('action-naval-stop')?.addEventListener('click', async () => {
+  if (!state.selectedUnitId || state.selectedUnitType !== 'naval') return;
+  await fetch(`${API_BASE}/naval-units/${state.selectedUnitId}/move`, { method: 'DELETE' });
+  showFeedback('Unit stopped', 'success');
+});
+
+/* ── AoI Panel Event Handlers ────────────────────────────────── */
+// Rename AoI
+document.getElementById('btn-rename-aoi').addEventListener('click', () => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
+  
+  const newName = document.getElementById('aoi-info-name').value.trim();
+  if (!newName) {
+    showFeedback('Please enter a name', 'warning');
     return;
   }
   
-  missions.forEach((m, idx) => {
-    const li = document.createElement('li');
-    li.className = `mission-item mission-item--${m.status}`;
+  const aoi = state.aois[aoiId];
+  if (aoi) {
+    aoi.name = newName;
+    saveAoIs();
+    renderAoiPanel(aoiId);
+    renderAoiList();
     
-    const assignedFleet = m.assignedFleetId ? state.fleets[m.assignedFleetId] : null;
-    const fleetLabel = assignedFleet ? ` · ${assignedFleet.name}` : '';
-    const icon = MISSION_TYPE_ICONS[m.type] || '📋';
+    // Update polygon tooltip
+    const polygon = state.aoiPolygons[aoiId];
+    if (polygon) {
+      const isNoGo = aoi.isNoGoZone;
+      const isTarget = aoi.isTarget;
+      const isEwSignal = aoi.isEwSignalArea;
+      let tooltipText = aoi.name;
+      if (isEwSignal) tooltipText = '📡 ' + aoi.name;
+      else if (isTarget) tooltipText = '🎯 ' + aoi.name;
+      else if (isNoGo) tooltipText = '⛔ ' + aoi.name;
+      polygon.setTooltipContent(tooltipText);
+    }
     
-    li.innerHTML = `
-      <div class="mission-item__left">
-        <span class="mission-num">${idx + 1}</span>
-        <span class="mission-icon">${icon}</span>
-        <div class="mission-info">
-          <span class="mission-title">${m.title}</span>
-          <span class="mission-meta">${m.type} · ${m.requiredDrones} drone${m.requiredDrones !== 1 ? 's' : ''}${fleetLabel}</span>
-        </div>
-      </div>
-      <div class="mission-item__right">
-        <span class="mission-badge mission-badge--${m.status}">${m.status}</span>
-        ${m.status === 'active' ? `<button class="btn-xs btn-xs--green mission-complete" data-id="${m.id}">✓ Done</button>` : ''}
-        ${m.status !== 'active' ? `<button class="btn-xs mission-remove" data-id="${m.id}" title="Remove">🗑</button>` : ''}
-      </div>
-    `;
-    ol.appendChild(li);
-  });
+    showFeedback('Area renamed!', 'success');
+  }
+});
+
+// Delete AoI from panel
+document.getElementById('btn-delete-aoi').addEventListener('click', () => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
   
-  ol.querySelectorAll('.mission-complete').forEach(btn => {
-    btn.addEventListener('click', () => completeMission(hubId, btn.dataset.id));
-  });
-  ol.querySelectorAll('.mission-remove').forEach(btn => {
-    btn.addEventListener('click', () => deleteMission(hubId, btn.dataset.id));
-  });
-}
+  const aoi = state.aois[aoiId];
+  if (aoi && confirm(`Delete "${aoi.name}"?`)) {
+    deleteAoi(aoiId);
+    closeAoiPanel();
+  }
+});
 
-function renderInfoTab(hubId) {
-  const hub = state.hubs[hubId];
-  if (!hub) return;
-  document.getElementById('info-hub-id').textContent = hub.id;
-  document.getElementById('info-hub-name').value = hub.name;
-  document.getElementById('info-hub-coords').textContent = `${hub.lat.toFixed(5)}, ${hub.lng.toFixed(5)}`;
-  document.getElementById('info-hub-created').textContent = new Date(hub.createdAt).toLocaleString();
-}
+// Center on map
+document.getElementById('btn-center-aoi-map').addEventListener('click', () => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
+  
+  const polygon = state.aoiPolygons[aoiId];
+  if (polygon) {
+    const bounds = L.latLngBounds(polygon.getLatLngs());
+    map.flyToBounds(bounds, { padding: [50, 50] });
+    showFeedback('Centered on area', 'success');
+  }
+});
 
+// Save ruleset
+document.getElementById('btn-save-aoi-ruleset').addEventListener('click', () => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
+  
+  const aoi = state.aois[aoiId];
+  if (aoi) {
+    const ruleset = document.getElementById('aoi-ruleset-editor').value;
+    aoi.ruleset = ruleset;
+    saveAoIs();
+    renderAoiPanel(aoiId);
+    showFeedback('Ruleset saved!', 'success');
+  }
+});
+
+// Export ruleset
+document.getElementById('btn-export-aoi-ruleset').addEventListener('click', () => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
+  
+  const aoi = state.aois[aoiId];
+  if (aoi && aoi.ruleset) {
+    const blob = new Blob([aoi.ruleset], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${aoi.name.replace(/\s+/g, '_')}_ruleset.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showFeedback('Ruleset exported!', 'success');
+  } else {
+    showFeedback('No ruleset to export', 'warning');
+  }
+});
+
+// Import ruleset
+document.getElementById('btn-import-aoi-ruleset').addEventListener('click', () => {
+  document.getElementById('aoi-ruleset-import-file').click();
+});
+
+// Handle ruleset import file
+document.getElementById('aoi-ruleset-import-file').addEventListener('change', (e) => {
+  const aoiId = state.activeAoiId;
+  if (!aoiId) return;
+  
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const aoi = state.aois[aoiId];
+    if (aoi) {
+      aoi.ruleset = event.target.result;
+      saveAoIs();
+      renderAoiPanel(aoiId);
+      showFeedback('Ruleset imported!', 'success');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// AoI tab switching
+document.querySelectorAll('#aoi-panel .hub-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabName = btn.dataset.tab;
+    document.querySelectorAll('#aoi-panel .hub-tab').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('#aoi-panel .hub-tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-aoi-${tabName}`));
+  });
+});
+
+/* ── Fleet and Mission rendering ─────────────────────────────── */
 function renderDroneList(hubId) {
   const container = document.getElementById('drone-list-hub');
+  if (!container) return;
+  
   const hubDrones = Object.values(state.drones).filter(d => d.hubId === hubId);
   const unassignedDrones = Object.values(state.drones).filter(d => !d.hubId);
+  
   container.innerHTML = '';
   
   const assignedSection = document.createElement('div');
@@ -1214,6 +1714,9 @@ function selectNavalUnit(id) {
   }
   renderNavalUnitList();
   renderNavalUnitSelectionPanel();
+  
+  // Open unit panel on the right
+  openUnitPanel(id, 'naval');
 }
 
 function enterNavalUnitMoveMode(unitId) {
@@ -1366,25 +1869,6 @@ document.getElementById('btn-place-hub').addEventListener('click', () => {
   else enterPlacingMode();
 });
 
-function enterPlacingDroneMode() {
-  state.placingDrone = true;
-  map.getContainer().style.cursor = 'crosshair';
-  placeBanner.innerHTML = '🚁 Click anywhere to spawn a drone — <button id="btn-cancel-place" class="btn-xs">Cancel</button>';
-  placeBanner.classList.remove('hidden');
-  document.getElementById('btn-spawn-drone').classList.add('btn-icon--active');
-}
-
-function exitPlacingDroneMode() {
-  state.placingDrone = false;
-  map.getContainer().style.cursor = '';
-  if (placeBanner) placeBanner.classList.add('hidden');
-  document.getElementById('btn-spawn-drone').classList.remove('btn-icon--active');
-}
-
-document.getElementById('btn-spawn-drone').addEventListener('click', () => {
-  if (state.placingDrone) exitPlacingDroneMode();
-  else enterPlacingDroneMode();
-});
 
 function enterPlacingGroundUnitMode() {
   state.placingGroundUnit = true;
@@ -1411,11 +1895,6 @@ function exitPlacingNavalUnitMode() {
   map.getContainer().style.cursor = '';
   if (placeBanner) placeBanner.classList.add('hidden');
 }
-
-document.getElementById('btn-spawn-naval').addEventListener('click', () => {
-  if (state.placingNavalUnit) exitPlacingNavalUnitMode();
-  else enterPlacingNavalUnitMode();
-});
 
 /* ── RTS Panel Bindings ──────────────────────────────────────── */
 const ACTION_ICONS = {
@@ -1483,7 +1962,6 @@ function selectAction(action) {
 
 function cancelAllModes() {
   if (state.placingHub) exitPlacingMode();
-  if (state.placingDrone) exitPlacingDroneMode();
   if (state.placingGroundUnit) exitPlacingGroundUnitMode();
   if (state.placingNavalUnit) exitPlacingNavalUnitMode();
   if (state.simulatingDrone) exitSimulationMode();
@@ -2192,6 +2670,11 @@ map.off('click');
 map.on('click', async (e) => {
   const { lat, lng } = e.latlng;
   
+  if (state.drawingEwArea) {
+    completeEwAreaDrawing(lat, lng);
+    return;
+  }
+  
   if (state.drawingAoi) {
     addDrawingPoint(lat, lng);
     return;
@@ -2204,16 +2687,6 @@ map.on('click', async (e) => {
       showFeedback('Hub created!', 'success');
     }
     exitPlacingMode();
-    return;
-  }
-  
-  if (state.placingDrone) {
-    const drone = await spawnDrone(lat, lng);
-    if (drone) {
-      map.flyTo([lat, lng], 15, { duration: 0.8 });
-      showFeedback('Drone spawned!', 'success');
-    }
-    exitPlacingDroneMode();
     return;
   }
   
@@ -2351,6 +2824,10 @@ map.on('dblclick', (e) => {
 });
 
 map.on('mousemove', (e) => {
+  if (state.drawingEwArea && state.ewAreaFirstCorner) {
+    updateEwAreaPreview(e.latlng.lat, e.latlng.lng);
+  }
+  
   if (state.selectedAction) {
     const actionInfo = ACTION_ICONS[state.selectedAction];
     const preview = document.getElementById('drag-preview');
@@ -2368,6 +2845,144 @@ map.on('mousemove', (e) => {
 
 /* ── AOI & Rulesets ──────────────────────────────────────────── */
 const AOI_STORAGE_KEY = 'drone-head-aois';
+
+// Open ruleset modal for editing
+function openRulesetModal(aoi) {
+  const modal = document.getElementById('ruleset-modal');
+  const modalTitle = document.getElementById('ruleset-modal-title');
+  const modalAreaName = document.getElementById('ruleset-area-name');
+  const modalEditor = document.getElementById('ruleset-editor');
+  
+  if (!modal || !modalEditor) return;
+  
+  modalAreaName.textContent = aoi.name;
+  modalEditor.value = aoi.ruleset || '';
+  modal.classList.remove('hidden');
+  
+  // Store reference to current AOI being edited
+  modal.dataset.editingAoiId = aoi.id;
+}
+
+// Close ruleset modal
+function closeRulesetModal() {
+  const modal = document.getElementById('ruleset-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// Save ruleset from modal
+function saveRulesetFromModal() {
+  const modal = document.getElementById('ruleset-modal');
+  const modalEditor = document.getElementById('ruleset-editor');
+  
+  if (!modal || !modalEditor) return;
+  
+  const aoiId = modal.dataset.editingAoiId;
+  const aoi = state.aois[aoiId];
+  
+  if (aoi) {
+    aoi.ruleset = modalEditor.value;
+    saveAoIs();
+    renderAoiList();
+    
+    // Update selection panel if this AOI is selected
+    if (state.currentEwSelection && state.currentEwSelection.id === aoiId) {
+      state.currentEwSelection.ruleset = modalEditor.value;
+      document.getElementById('ew-selection-ruleset').textContent = modalEditor.value || 'No ruleset defined';
+    }
+    
+    showFeedback('Ruleset saved!', 'success');
+    closeRulesetModal();
+  }
+}
+
+// Export ruleset to file
+function exportRuleset() {
+  const modalEditor = document.getElementById('ruleset-editor');
+  if (!modalEditor) return;
+  
+  const text = modalEditor.value;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ruleset.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  showFeedback('Ruleset exported!', 'success');
+}
+
+// Import ruleset from file
+function importRuleset() {
+  const input = document.getElementById('ruleset-import-file');
+  if (!input) return;
+  
+  input.click();
+}
+
+// Handle file import
+function handleRulesetImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const modalEditor = document.getElementById('ruleset-editor');
+    if (modalEditor) {
+      modalEditor.value = e.target.result;
+      showFeedback('Ruleset imported!', 'success');
+    }
+  };
+  reader.readAsText(file);
+  
+  // Reset input
+  event.target.value = '';
+}
+
+// Setup ruleset modal event listeners
+function setupRulesetModalListeners() {
+  const modal = document.getElementById('ruleset-modal');
+  const modalClose = document.getElementById('ruleset-modal-close');
+  const rulesetSave = document.getElementById('ruleset-save');
+  const rulesetExport = document.getElementById('ruleset-export');
+  const rulesetImport = document.getElementById('ruleset-import');
+  const rulesetImportFile = document.getElementById('ruleset-import-file');
+  
+  if (modalClose) {
+    modalClose.addEventListener('click', closeRulesetModal);
+  }
+  
+  if (rulesetSave) {
+    rulesetSave.addEventListener('click', saveRulesetFromModal);
+  }
+  
+  if (rulesetExport) {
+    rulesetExport.addEventListener('click', exportRuleset);
+  }
+  
+  if (rulesetImport) {
+    rulesetImport.addEventListener('click', importRuleset);
+  }
+  
+  if (rulesetImportFile) {
+    rulesetImportFile.addEventListener('change', handleRulesetImport);
+  }
+  
+  // Close on overlay click
+  if (modal) {
+    const overlay = modal.querySelector('.modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', closeRulesetModal);
+    }
+  }
+  
+  // Close on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+      closeRulesetModal();
+    }
+  });
+}
+
 
 function loadAoIs() {
   try {
@@ -2491,10 +3106,15 @@ function renderAoIPolygons() {
   Object.values(state.aois).forEach(aoi => {
     const isNoGo = aoi.isNoGoZone;
     const isTarget = aoi.isTarget;
+    const isEwSignal = aoi.isEwSignalArea;
     
     let color, fillColor, fillOpacity, weight, dashArray, tooltipText;
     
-    if (isTarget) {
+    if (isEwSignal) {
+      color = '#9d4edd'; fillColor = 'rgba(157, 78, 221, 0.2)';
+      fillOpacity = 0.2; weight = 2; dashArray = '5, 5';
+      tooltipText = '📡 ' + aoi.name;
+    } else if (isTarget) {
       color = '#00ff00'; fillColor = 'rgba(0, 255, 0, 0.2)';
       fillOpacity = 0.2; weight = 2; dashArray = '5, 5';
       tooltipText = '🎯 ' + aoi.name;
@@ -2543,8 +3163,9 @@ function renderAoiList() {
     li.classList.toggle('selected', aoi.id === state.selectedAoiId);
     if (aoi.isNoGoZone) li.classList.add('aoi-card--no-go');
     if (aoi.isTarget) li.classList.add('aoi-card--target');
+    if (aoi.isEwSignalArea) li.classList.add('aoi-card--ew-signal');
     
-    const icon = aoi.isTarget ? '🎯' : aoi.isNoGoZone ? '⛔' : '🔷';
+    const icon = aoi.isEwSignalArea ? '📡' : aoi.isTarget ? '🎯' : aoi.isNoGoZone ? '⛔' : '🔷';
     const metaText = aoi.isTarget
       ? `📍 ${aoi.targetLocation.lat.toFixed(4)}, ${aoi.targetLocation.lng.toFixed(4)}`
       : `${aoi.coordinates.length} points`;
@@ -2555,6 +3176,7 @@ function renderAoiList() {
         <span class="aoi-card__name">${aoi.name}</span>
         ${aoi.isNoGoZone ? '<span class="aoi-card__badge">NO-GO</span>' : ''}
         ${aoi.isTarget ? '<span class="aoi-card__badge aoi-card__badge--target">TARGET</span>' : ''}
+        ${aoi.isEwSignalArea ? '<span class="aoi-card__badge aoi-card__badge--ew-signal">EW SIGNAL</span>' : ''}
       </div>
       <div class="aoi-card__meta"><span>${metaText}</span></div>
       <div class="aoi-card__actions">
@@ -2589,7 +3211,109 @@ function selectAoi(aoiId) {
     map.flyToBounds(bounds, { padding: [50, 50] });
   }
   
+  // Open the AoI panel on the right side
+  openAoiPanel(aoiId);
+  
   renderAoiList();
+}
+
+// Alias for calculateAreaSize
+function calculateAoiSize(coordinates) {
+  return calculateAreaSize(coordinates);
+}
+
+// Calculate area size in square kilometers
+function calculateAreaSize(coordinates) {
+  if (!coordinates || coordinates.length < 4) return 0;
+  
+  // Simple approximation using bounding box
+  let minLat = Infinity, maxLat = -Infinity;
+  let minLng = Infinity, maxLng = -Infinity;
+  
+  coordinates.forEach(([lat, lng]) => {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  });
+  
+  // Approximate distance (1 degree ≈ 111 km)
+  const latDiff = (maxLat - minLat) * 111;
+  const lngDiff = (maxLng - minLng) * 111 * Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+  
+  return latDiff * lngDiff;
+}
+
+// Get center point of polygon
+function getPolygonCenter(coordinates) {
+  if (!coordinates || coordinates.length === 0) return null;
+  
+  let sumLat = 0, sumLng = 0;
+  coordinates.forEach(([lat, lng]) => {
+    sumLat += lat;
+    sumLng += lng;
+  });
+  
+  return {
+    lat: sumLat / coordinates.length,
+    lng: sumLng / coordinates.length
+  };
+}
+
+// Show EW Signal Area selection panel
+function showEwSelectionPanel(aoi) {
+  // Hide all other selection panels
+  document.getElementById('selection-empty').classList.add('hidden');
+  document.getElementById('selection-content').classList.add('hidden');
+  document.getElementById('ground-selection-empty').classList.add('hidden');
+  document.getElementById('ground-selection-content').classList.add('hidden');
+  document.getElementById('naval-selection-empty').classList.add('hidden');
+  document.getElementById('naval-selection-content').classList.add('hidden');
+  document.getElementById('ew-selection-empty').classList.remove('hidden');
+  document.getElementById('ew-selection-content').classList.remove('hidden');
+  
+  // Update panel content
+  document.getElementById('ew-selection-name').textContent = aoi.name;
+  document.getElementById('ew-selection-id').textContent = aoi.id;
+  
+  // Calculate and display center coordinates
+  const center = getPolygonCenter(aoi.coordinates);
+  if (center) {
+    document.getElementById('ew-selection-center').textContent = 
+      `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+  }
+  
+  // Calculate and display area size
+  const size = calculateAreaSize(aoi.coordinates);
+  document.getElementById('ew-selection-size').textContent = 
+    size > 0 ? `${size.toFixed(2)} km²` : '—';
+  
+  // Signal strength (placeholder - could be calculated or stored)
+  document.getElementById('ew-selection-signal').textContent = 
+    aoi.signalStrength || 'Unknown';
+  
+  // Ruleset
+  document.getElementById('ew-selection-ruleset').textContent = 
+    aoi.ruleset || 'No ruleset defined';
+  
+  // Created date
+  document.getElementById('ew-selection-created').textContent = 
+    aoi.createdAt ? new Date(aoi.createdAt).toLocaleString() : '—';
+  
+  // Store reference to current EW selection
+  state.currentEwSelection = aoi;
+}
+
+// Hide all selection panels
+function hideAllSelectionPanels() {
+  document.getElementById('selection-empty').classList.add('hidden');
+  document.getElementById('selection-content').classList.add('hidden');
+  document.getElementById('ground-selection-empty').classList.add('hidden');
+  document.getElementById('ground-selection-content').classList.add('hidden');
+  document.getElementById('naval-selection-empty').classList.add('hidden');
+  document.getElementById('naval-selection-content').classList.add('hidden');
+  document.getElementById('ew-selection-empty').classList.add('hidden');
+  document.getElementById('ew-selection-content').classList.add('hidden');
 }
 
 function deleteAoi(aoiId) {
@@ -2745,6 +3469,116 @@ function completeNoGoZoneDrawing() {
 }
 
 document.getElementById('btn-draw-area').addEventListener('click', enterDrawingMode);
+
+/* ── EW Signal Area Feature (Box/Rectangle) ──────────────────── */
+function enterEwAreaDrawingMode() {
+  state.drawingEwArea = true;
+  state.ewAreaFirstCorner = null;
+  state.ewAreaPreviewLayer = null;
+  
+  map.getContainer().style.cursor = 'crosshair';
+  if (placeBanner) {
+    placeBanner.innerHTML = '📡 Click first corner of EW Signal Area box — <button id="btn-cancel-place" class="btn-xs">Cancel</button>';
+    placeBanner.classList.remove('hidden');
+  }
+  
+  showFeedback('EW Signal Area mode: Click first corner, then second corner', 'info');
+}
+
+function exitEwAreaDrawingMode() {
+  state.drawingEwArea = false;
+  state.ewAreaFirstCorner = null;
+  map.getContainer().style.cursor = '';
+  if (placeBanner) placeBanner.classList.add('hidden');
+  
+  if (state.ewAreaPreviewLayer) {
+    map.removeLayer(state.ewAreaPreviewLayer);
+    state.ewAreaPreviewLayer = null;
+  }
+}
+
+function updateEwAreaPreview(lat, lng) {
+  if (!state.ewAreaFirstCorner) return;
+  
+  if (state.ewAreaPreviewLayer) {
+    map.removeLayer(state.ewAreaPreviewLayer);
+  }
+  
+  // Create rectangle from two corners
+  const corners = [state.ewAreaFirstCorner, [lat, lng]];
+  state.ewAreaPreviewLayer = L.rectangle(corners, {
+    color: '#9d4edd',
+    fillColor: 'rgba(157, 78, 221, 0.2)',
+    fillOpacity: 0.2,
+    weight: 2,
+    dashArray: '8, 4'
+  }).addTo(map);
+}
+
+function completeEwAreaDrawing(lat, lng) {
+  if (!state.ewAreaFirstCorner) {
+    state.ewAreaFirstCorner = [lat, lng];
+    if (placeBanner) {
+      placeBanner.innerHTML = '📡 Click second corner to complete box — <button id="btn-cancel-place" class="btn-xs">Cancel</button>';
+    }
+    showFeedback('First corner set. Click second corner.', 'info');
+    return;
+  }
+  
+  // Calculate rectangle corners from two points
+  const [lat1, lng1] = state.ewAreaFirstCorner;
+  const lat2 = lat;
+  const lng2 = lng;
+  
+  // Create polygon coordinates for the rectangle
+  const coordinates = [
+    [lat1, lng1],
+    [lat1, lng2],
+    [lat2, lng2],
+    [lat2, lng1]
+  ];
+  
+  const name = prompt('Enter name for this EW Signal Area:', 'EW Signal Area ' + (Object.keys(state.aois).length + 1));
+  if (!name) { exitEwAreaDrawingMode(); return; }
+  
+  const aoiId = generateAoiId();
+  const aoi = {
+    id: aoiId,
+    name,
+    coordinates,
+    ruleset: 'WARNING: Electronic warfare signals detected in this area',
+    isEwSignalArea: true,
+    createdAt: new Date().toISOString()
+  };
+  
+  state.aois[aoiId] = aoi;
+  
+  if (state.ewAreaPreviewLayer) {
+    map.removeLayer(state.ewAreaPreviewLayer);
+    state.ewAreaPreviewLayer = null;
+  }
+  
+  const polygon = L.polygon(coordinates, {
+    color: '#9d4edd',
+    fillColor: 'rgba(157, 78, 221, 0.2)',
+    fillOpacity: 0.2,
+    weight: 2,
+    dashArray: '5, 5'
+  }).addTo(map);
+  
+  polygon.on('click', (e) => { e.stopPropagation(); selectAoi(aoiId); });
+  polygon.bindTooltip('📡 ' + name, { permanent: true, direction: 'center' });
+  state.aoiPolygons[aoiId] = polygon;
+  
+  state.ewAreaFirstCorner = null;
+  exitEwAreaDrawingMode();
+  
+  saveAoIs();
+  renderAoiList();
+  showFeedback(`EW Signal Area "${name}" created!`, 'success');
+}
+
+document.getElementById('btn-draw-ew-area').addEventListener('click', enterEwAreaDrawingMode);
 
 /* ── No-Go Zone Backend Sync ─────────────────────────────────── */
 function applyNoGoZoneUpdate(zone) {
@@ -2966,6 +3800,36 @@ document.getElementById('mission-quick-add').addEventListener('click', () => {
   document.getElementById('btn-add-mission').click();
   switchTab('missions');
 });
+
+/* ── EW Selection Panel Buttons ───────────────────────────────── */
+const btnEditEwRuleset = document.getElementById('btn-edit-ew-ruleset');
+const btnCenterEwMap = document.getElementById('btn-center-ew-map');
+
+if (btnEditEwRuleset) {
+  btnEditEwRuleset.addEventListener('click', () => {
+    if (!state.currentEwSelection) {
+      showFeedback('No EW Signal Area selected', 'warning');
+      return;
+    }
+    openRulesetModal(state.currentEwSelection);
+  });
+}
+
+if (btnCenterEwMap) {
+  btnCenterEwMap.addEventListener('click', () => {
+    if (!state.currentEwSelection) {
+      showFeedback('No EW Signal Area selected', 'warning');
+      return;
+    }
+    const aoi = state.currentEwSelection;
+    const polygon = state.aoiPolygons[aoi.id];
+    if (polygon) {
+      const bounds = L.latLngBounds(polygon.getLatLngs());
+      map.flyToBounds(bounds, { padding: [50, 50] });
+      showFeedback(`Centered on "${aoi.name}"`, 'success');
+    }
+  });
+}
 
 /* ── Color Picker & Highlight ────────────────────────────────── */
 const highlightColorPicker = document.getElementById('highlight-color-picker');
@@ -3255,6 +4119,107 @@ document.addEventListener('keydown', (e) => {
 /* ── Initialization ──────────────────────────────────────────── */
 loadAoIs();
 setupDeleteButtonHandlers();
+setupRulesetModalListeners();
+
+/* ── Sidebar Toggle (Z-key) ──────────────────────────────────── */
+let isSidebarCollapsed = false;
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggleBtn = document.getElementById('btn-toggle-sidebar');
+  
+  isSidebarCollapsed = !isSidebarCollapsed;
+  
+  if (isSidebarCollapsed) {
+    sidebar.classList.add('sidebar--collapsed');
+    toggleBtn.classList.add('btn-sidebar-toggle--collapsed');
+    toggleBtn.querySelector('.btn-sidebar-toggle__icon').textContent = '▶';
+  } else {
+    sidebar.classList.remove('sidebar--collapsed');
+    toggleBtn.classList.remove('btn-sidebar-toggle--collapsed');
+    toggleBtn.querySelector('.btn-sidebar-toggle__icon').textContent = '◀';
+  }
+}
+
+// Z-key toggle handler
+document.addEventListener('keydown', (e) => {
+  // Only trigger on Z key, not when typing in inputs
+  if (e.key === 'z' || e.key === 'Z') {
+    const activeElement = document.activeElement;
+    const isInput = activeElement.tagName === 'INPUT' || 
+                    activeElement.tagName === 'TEXTAREA' ||
+                    activeElement.isContentEditable;
+    
+    if (!isInput) {
+      e.preventDefault();
+      toggleSidebar();
+    }
+  }
+});
+
+// Click handler for toggle button
+const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar');
+if (toggleSidebarBtn) {
+  toggleSidebarBtn.addEventListener('click', toggleSidebar);
+}
+
+/* ── Collapsible Sections ────────────────────────────────────── */
+function toggleSection(sectionHeaderId, sectionContentId) {
+  const header = document.getElementById(sectionHeaderId);
+  const content = document.getElementById(sectionContentId);
+  
+  if (!header || !content) return;
+  
+  header.classList.toggle('section-title--collapsed');
+  content.classList.toggle('section-content--collapsed');
+}
+
+// Setup collapsible section headers
+function setupCollapsibleSections() {
+  // Mission Hubs section
+  const hubsHeader = document.getElementById('hubs-section-header');
+  if (hubsHeader) {
+    hubsHeader.addEventListener('click', (e) => {
+      // Prevent toggle when clicking on buttons
+      if (e.target.closest('.btn-icon')) return;
+      toggleSection('hubs-section-header', 'hub-list');
+    });
+  }
+  
+  // Areas of Interest section
+  const aoiHeader = document.getElementById('aoi-section-header');
+  if (aoiHeader) {
+    aoiHeader.addEventListener('click', (e) => {
+      // Prevent toggle when clicking on buttons
+      if (e.target.closest('.btn-icon')) return;
+      toggleSection('aoi-section-header', 'aoi-list');
+    });
+  }
+}
+
+// Auto-collapse empty sections
+function autoCollapseEmptySections() {
+  const hubList = document.getElementById('hub-list');
+  const aoiList = document.getElementById('aoi-list');
+  
+  // Collapse Mission Hubs if empty
+  if (hubList && hubList.children.length === 0) {
+    hubList.classList.add('section-content--collapsed');
+    const hubsHeader = document.getElementById('hubs-section-header');
+    if (hubsHeader) hubsHeader.classList.add('section-title--collapsed');
+  }
+  
+  // Collapse Areas of Interest if empty
+  if (aoiList && aoiList.children.length === 0) {
+    aoiList.classList.add('section-content--collapsed');
+    const aoiHeader = document.getElementById('aoi-section-header');
+    if (aoiHeader) aoiHeader.classList.add('section-title--collapsed');
+  }
+}
+
+// Initialize collapsible sections
+setupCollapsibleSections();
+autoCollapseEmptySections();
 
 /* ── Focus Mode (Space-bar to hide overlays) ─────────────────── */
 let isFocusModeActive = false;
@@ -3291,3 +4256,111 @@ document.addEventListener('keyup', (e) => {
     toggleFocusMode(true);
   }
 });
+
+/* ── Search Bar Functionality ─────────────────────────────────── */
+async function geocodeAddress(address) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Language': 'en'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Geocoding service unavailable');
+    }
+    
+    const data = await response.json();
+    
+    if (!data || data.length === 0) {
+      return null;
+    }
+    
+    return {
+      lat: parseFloat(data[0].lat),
+      lng: parseFloat(data[0].lon),
+      display_name: data[0].display_name
+    };
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    return null;
+  }
+}
+
+function centerMapOnLocation(lat, lng, address) {
+  map.flyTo([lat, lng], 14, {
+    duration: 1.5
+  });
+  
+  // Show a temporary marker
+  const marker = L.marker([lat, lng]).addTo(map);
+  marker.bindPopup(`<strong>${address || 'Selected Location'}</strong><br>${lat.toFixed(6)}, ${lng.toFixed(6)}`).openPopup();
+  
+  // Remove marker after 5 seconds
+  setTimeout(() => {
+    map.removeLayer(marker);
+  }, 5000);
+}
+
+function showSearchFeedback(message, isError = false) {
+  // Create or update toast notification
+  let toast = document.getElementById('search-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'search-toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  
+  const toastMessage = document.getElementById('toast-message');
+  if (toastMessage) {
+    toastMessage.textContent = message;
+  }
+  
+  toast.classList.remove('hidden');
+  if (isError) {
+    toast.style.background = 'linear-gradient(135deg, rgba(255, 68, 68, 0.95), rgba(255, 100, 100, 0.95))';
+  } else {
+    toast.style.background = 'linear-gradient(135deg, var(--green), #00cc6a)';
+  }
+  
+  // Auto-hide after 3 seconds
+  setTimeout(() => {
+    toast.classList.add('hidden');
+  }, 3000);
+}
+
+// Initialize search bar event listener
+const searchInput = document.getElementById('search-input');
+if (searchInput) {
+  searchInput.addEventListener('keypress', async (e) => {
+    if (e.key === 'Enter') {
+      const address = searchInput.value.trim();
+      
+      if (!address) {
+        showSearchFeedback('Please enter an address', true);
+        return;
+      }
+      
+      // Disable input during search
+      searchInput.disabled = true;
+      searchInput.placeholder = 'Searching...';
+      
+      const result = await geocodeAddress(address);
+      
+      if (result) {
+        centerMapOnLocation(result.lat, result.lng, result.display_name);
+        showSearchFeedback(`Centered on: ${result.display_name.split(',')[0]}`);
+        searchInput.value = '';
+      } else {
+        showSearchFeedback('Address not found. Please try again.', true);
+      }
+      
+      // Re-enable input
+      searchInput.disabled = false;
+      searchInput.placeholder = 'Search address...';
+      searchInput.focus();
+    }
+  });
+}
