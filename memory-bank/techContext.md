@@ -62,7 +62,7 @@ cd drone-head
 cd backend
 npm install
 
-# Create data directory
+# Create data directory (if needed)
 mkdir -p data
 ```
 
@@ -98,7 +98,7 @@ DEVELOPMENT_MODE=false
 
 ### Development Mode
 
-When `DEVELOPMENT_MODE=true`:
+When `DEVELOPMENT_MODE=true` or `DEVELOPMENT_MODE=develop`:
 - Authentication is bypassed
 - Any request to `/api/auth/me` returns a mock user
 - Useful for local development and testing
@@ -107,12 +107,15 @@ When `DEVELOPMENT_MODE=true`:
 
 ### SQLite Tables
 
+All tables include `user_id` for user-scoped data access:
+
 ```sql
 -- Users
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  role TEXT DEFAULT 'user',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -136,6 +139,177 @@ CREATE TABLE user_states (
   name TEXT DEFAULT 'Saved State',
   saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Drones
+CREATE TABLE drones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  altitude REAL DEFAULT 0,
+  speed REAL DEFAULT 0,
+  status TEXT DEFAULT 'active',
+  battery REAL DEFAULT 100,
+  hub_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Hubs
+CREATE TABLE hubs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Fleets
+CREATE TABLE fleets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  hub_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  drone_ids TEXT DEFAULT '[]',
+  status TEXT DEFAULT 'idle',
+  current_mission_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (hub_id) REFERENCES hubs(id) ON DELETE CASCADE
+);
+
+-- Missions
+CREATE TABLE missions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  hub_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT DEFAULT 'general',
+  required_drones INTEGER DEFAULT 1,
+  priority INTEGER DEFAULT 100,
+  status TEXT DEFAULT 'queued',
+  assigned_fleet_id INTEGER,
+  waypoint_id INTEGER,
+  end_condition TEXT DEFAULT 'manual',
+  end_condition_value TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (hub_id) REFERENCES hubs(id) ON DELETE CASCADE
+);
+
+-- Ground Units (includes Radio Towers)
+CREATE TABLE ground_units (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'truck',
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  speed REAL DEFAULT 70,
+  status TEXT DEFAULT 'idle',
+  battery REAL DEFAULT 100,
+  hub_id INTEGER,
+  on_road INTEGER DEFAULT 0,
+  current_path TEXT DEFAULT '[]',
+  path_index INTEGER DEFAULT 0,
+  is_radio_tower INTEGER DEFAULT 0,
+  radio_range_meters REAL,
+  radio_effects TEXT,
+  radio_active INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Roads
+CREATE TABLE roads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'street',
+  coordinates TEXT NOT NULL,
+  speed_limit REAL DEFAULT 50,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Walkable Paths
+CREATE TABLE walkable_paths (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'footpath',
+  coordinates TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- No-Go Zones
+CREATE TABLE no_go_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  coordinates TEXT NOT NULL,
+  ruleset TEXT DEFAULT 'FORBIDDEN: Drones are not allowed to enter this area.',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Naval Units
+CREATE TABLE naval_units (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'fast-boat',
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  speed REAL DEFAULT 80,
+  status TEXT DEFAULT 'idle',
+  battery REAL DEFAULT 100,
+  hub_id INTEGER,
+  current_path TEXT DEFAULT '[]',
+  path_index INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Water Areas
+CREATE TABLE water_areas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  coordinates TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Waypoints
+CREATE TABLE waypoints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  entity_id INTEGER,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  hub_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Migrations
+CREATE TABLE migrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  applied_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -185,11 +359,14 @@ const state = {
   fleets: {},        // id → fleet
   missions: {},      // id → mission
   groundUnits: {},   // id → ground unit
+  radioTowers: {},   // id → radio tower
   navalUnits: {},    // id → naval unit
   roads: {},         // id → road
   paths: {},         // id → walkable path
   noGoZones: {},     // id → no-go zone
   waterAreas: {},    // id → water area
+  aois: {},          // id → area of interest
+  ewAreas: {},       // id → EW signal area
   selected: null,    // selected entity ID
   // ... etc
 };
@@ -279,39 +456,40 @@ console.log('Drone updated:', drone);
 
 ## Known Limitations
 
-1. **In-Memory Data**: Operational data lost on restart
-2. **Single User**: No multi-user collaboration
-3. **SQLite**: Not suitable for high-concurrency
-4. **SSE**: Single connection per client
-5. **No Build Step**: Frontend not minified/optimized
+1. **Single Writer**: SQLite has limited concurrent writes
+2. **Single User Sessions**: No real-time collaboration between users
+3. **SSE**: Single connection per client per user
+4. **No Build Step**: Frontend not minified/optimized
+5. **Radio Effects**: Framework exists but not fully implemented
 
 ## Performance Considerations
 
 ### Bottlenecks
 
-1. **SSE Broadcasting**: All clients receive all updates
-2. **In-Memory Queries**: O(n) for filtered operations
+1. **SSE Broadcasting**: All clients for a user receive all updates
+2. **Database Queries**: All queries include user_id filter
 3. **SQLite**: Single writer
 
 ### Optimizations
 
-1. Use `Map` for O(1) lookups
+1. Use indexed queries on user_id
 2. Batch broadcasts where possible
 3. Limit SSE clients if needed
-4. Consider Redis for scaling
+4. Consider Redis + PostgreSQL for scaling
 
 ## Security Considerations
 
 ### Current Implementation
 
-- JWT authentication (optional in development)
+- JWT authentication
 - Bcrypt password hashing
 - CORS enabled
+- User-scoped data access (every query includes user_id)
 
 ### Recommendations for Production
 
 1. Set `DEVELOPMENT_MODE=false`
-2. Use strong `JWT_SECRET`
+2. Use strong `JWT_SECRET` (32+ characters)
 3. Enable HTTPS
 4. Implement rate limiting
 5. Add input validation
@@ -335,7 +513,8 @@ console.log('Drone updated:', drone);
 
 ```
 backend/
-├── server.js              # Main application (2500+ lines)
+├── server.js              # Main application (~1,764 lines)
+├── dataAccess.js          # Data access layer (~687 lines)
 ├── package.json           # Dependencies
 ├── Dockerfile             # Container config
 └── data/
@@ -343,13 +522,15 @@ backend/
 
 frontend/
 ├── index.html             # Main dashboard
-├── app.js                 # Main application (3200+ lines)
+├── app.js                 # Main application (~4,192 lines)
 ├── style.css              # Styles
-├── auth.js                # Authentication
+├── auth-client.js         # Authentication module (~234 lines)
 ├── auth.css               # Auth styles
 ├── profile.html           # Profile page
 ├── profile.js             # Profile logic
 ├── profile.css            # Profile styles
+├── cookie-policy.js       # Cookie policy
+├── cookie-policy.css      # Cookie policy styles
 └── login/
     ├── login.html         # Login page
     ├── login.js           # Login logic
@@ -359,4 +540,4 @@ frontend/
 ---
 
 *Created: 2024*
-*Last Updated: 2024*
+*Last Updated: 2026-04*

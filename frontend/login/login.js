@@ -100,8 +100,8 @@ loginFormEl.addEventListener('submit', async (e) => {
     }
 
     // Store token and user info
-    localStorage.setItem('authToken', data.token);
-    localStorage.setItem('currentUser', JSON.stringify(data.user));
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
 
     // Redirect to main app
     window.location.href = '/index.html';
@@ -171,8 +171,8 @@ registerFormEl.addEventListener('submit', async (e) => {
     }
 
     // Auto-login after registration
-    localStorage.setItem('authToken', data.token);
-    localStorage.setItem('currentUser', JSON.stringify(data.user));
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
 
     // Redirect to main app
     window.location.href = '/index.html';
@@ -252,8 +252,8 @@ deleteForm.addEventListener('submit', async (e) => {
     }
 
     // Clear any stored data
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
 
     // Show success and redirect
     alert('Account deleted successfully');
@@ -265,7 +265,7 @@ deleteForm.addEventListener('submit', async (e) => {
 
 // Check if already logged in
 window.addEventListener('DOMContentLoaded', () => {
-  const token = localStorage.getItem('authToken');
+  const token = localStorage.getItem('token');
   if (token) {
     // Verify token is still valid
     fetch(`${API_URL}/api/auth/me`, {
@@ -291,8 +291,8 @@ window.addEventListener('DOMContentLoaded', () => {
     })
     .catch(() => {
       // Token invalid, clear it
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUser');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     });
   }
 });

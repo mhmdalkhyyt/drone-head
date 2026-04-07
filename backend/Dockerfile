@@ -17,5 +17,5 @@ COPY . .
 # Expose the port the app runs on
 EXPOSE 3000
 
-# Start the server
-CMD ["npm", "start"]
+# Start the server directly with node to avoid npm lifecycle issues
+CMD ["node", "server.js"]

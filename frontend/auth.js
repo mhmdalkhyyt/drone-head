@@ -20,14 +20,14 @@ const stateNameInput = document.getElementById('state-name');
 // Initialize authentication
 async function initAuth() {
   // Get stored token
-  authToken = localStorage.getItem('authToken');
-  const storedUser = localStorage.getItem('currentUser');
+  authToken = localStorage.getItem('token');
+  const storedUser = localStorage.getItem('user');
   
   if (storedUser) {
     try {
       currentUser = JSON.parse(storedUser);
     } catch (e) {
-      localStorage.removeItem('currentUser');
+      localStorage.removeItem('user');
       authToken = null;
     }
   }
@@ -58,8 +58,8 @@ async function initAuth() {
     return true;
   } catch (error) {
     console.error('Token verification failed:', error);
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/login/login.html';
     return false;
   }
@@ -75,8 +75,8 @@ function updateUserInfo() {
 
 // Logout
 async function logout() {
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
   authToken = null;
   currentUser = null;
   window.location.href = '/login/login.html';

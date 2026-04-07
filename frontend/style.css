@@ -2791,6 +2791,73 @@ html, body { height: 100%; width: 100%; font-family: 'Segoe UI', system-ui, sans
   flex: 1;
 }
 
+/* Submenu arrow for items with submenus */
+.submenu-arrow {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  transition: transform 0.2s ease;
+}
+
+.context-option--has-submenu:hover .submenu-arrow {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+
+/* Context Submenu container */
+.context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 0, 0, 0.3);
+  z-index: 1002;
+  padding: 4px;
+  margin-left: -4px;
+  display: none;
+}
+
+.context-submenu.hidden {
+  display: none !important;
+}
+
+.context-submenu:not(.hidden) {
+  display: block;
+}
+
+.context-submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.context-submenu-item:hover {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.context-submenu-item:active {
+  background: var(--surface3);
+}
+
+/* Show submenu when hovering over parent menu item */
+.context-option--has-submenu:hover + .context-submenu {
+  display: block;
+}
+
 /* Entity Context Info Section */
 .entity-context-info {
   padding: 8px 4px;
@@ -3765,6 +3832,65 @@ input[type="color"]#highlight-color-picker::-moz-color-swatch {
   }
 }
 
+/* ── Radio Tower Styles ───────────────────────────────────────────────────── */
+
+.radio-tower-marker {
+  font-size: 28px;
+  filter: drop-shadow(0 0 8px currentColor);
+  transition: all 0.3s ease;
+}
+
+.radio-tower--active {
+  color: #00ff88;
+  filter: drop-shadow(0 0 12px #00ff88) drop-shadow(0 0 20px rgba(0, 255, 136, 0.5));
+  animation: radio-pulse 2s ease-in-out infinite;
+}
+
+.radio-tower--inactive {
+  color: #666666;
+  filter: grayscale(100%);
+}
+
+@keyframes radio-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 12px #00ff88) drop-shadow(0 0 20px rgba(0, 255, 136, 0.5));
+  }
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 18px #00ff88) drop-shadow(0 0 30px rgba(0, 255, 136, 0.7));
+  }
+}
+
+/* Radio tower in ground unit marker */
+.ground-unit-marker.radio-tower {
+  filter: drop-shadow(0 0 6px #00ff88);
+}
+
+.ground-unit-marker.radio-tower::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background: #00ff88;
+  border-radius: 50%;
+  animation: radio-dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes radio-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 6px #00ff88;
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 12px #00ff88;
+  }
+}
+
 /* ── Focus Mode (Space-bar to hide overlays) ───────────────────────────────── */
 /* When .focus-mode is applied to body, all UI overlays are hidden */
 body.focus-mode #hud-bar,
@@ -3840,11 +3966,48 @@ body.focus-mode .leaflet-tooltip {
   box-shadow: 0 8px 32px rgba(0, 255, 136, 0.3), 0 0 20px rgba(0, 255, 136, 0.2);
 }
 
-/* Close button for mission toast */
-.mission-toast-close {
+/* Actions container for mission toast buttons */
+.mission-toast-actions {
   position: absolute;
   top: 8px;
   right: 10px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Action button for mission toast */
+.mission-toast-action {
+  background: rgba(0, 0, 0, 0.15);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #000;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mission-toast-action--act {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mission-toast-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.mission-toast-action--act:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Close button for mission toast */
+.mission-toast-close {
   background: rgba(0, 0, 0, 0.2);
   border: none;
   border-radius: 50%;
@@ -3858,6 +4021,7 @@ body.focus-mode .leaflet-tooltip {
   color: #000;
   transition: all 0.2s ease;
   line-height: 1;
+  padding: 0;
 }
 
 .mission-toast-close:hover {

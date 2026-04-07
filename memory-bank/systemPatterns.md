@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-Drone Head follows a **monolithic server** architecture with **in-memory data stores** and **real-time broadcasting** via Server-Sent Events.
+Drone Head follows a **monolithic server** architecture with **persistent SQLite storage**, **user-scoped data access**, and **real-time broadcasting** via Server-Sent Events.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -17,14 +17,14 @@ Drone Head follows a **monolithic server** architecture with **in-memory data st
 │  │  - SSE Client   │         │  └───────────────────┘  │   │
 │  └─────────────────┘         │                         │   │
 │                              │  ┌───────────────────┐  │   │
-│                              │  │  In-Memory Maps   │  │   │
-│                              │  │  - drones, hubs   │  │   │
-│                              │  │  - fleets, missions│ │   │
+│                              │  │  Data Access      │  │   │
+│                              │  │  Layer (DAL)      │  │   │
 │                              │  └───────────────────┘  │   │
 │                              │                         │   │
 │                              │  ┌───────────────────┐  │   │
 │                              │  │  SQLite Database  │  │   │
-│                              │  │  - users          │  │   │
+│                              │  │  - All entities   │  │   │
+│                              │  │  - User-scoped    │  │   │
 │                              │  └───────────────────┘  │   │
 │                              └─────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -32,91 +32,101 @@ Drone Head follows a **monolithic server** architecture with **in-memory data st
 
 ## Key Architectural Decisions
 
-### 1. In-Memory Data Stores
+### 1. Persistent SQLite Storage
 
-**Decision**: Use JavaScript `Map` objects for all operational data.
+**Decision**: All operational data stored in SQLite with user ownership.
 
 **Rationale**:
-- O(1) lookup by ID
-- Easy iteration for broadcasting
-- No database overhead for real-time operations
-- Simple to understand and debug
+- Data survives server restarts
+- No separate database server needed
+- Synchronous API simplifies code
+- User-scoped queries ensure data isolation
 
-**Trade-offs**:
-- Data lost on server restart
-- Not suitable for horizontal scaling
-- Limited by available memory
+**Implementation**:
+```sql
+CREATE TABLE drones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  ...
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+### 2. Data Access Layer (DAL)
+
+**Decision**: Centralized class-based data access layer.
+
+**Rationale**:
+- Clean separation of database logic
+- Consistent user-scoped operations
+- Easier to maintain and test
+- Reduces code duplication
 
 **Implementation**:
 ```javascript
-const drones = new Map();   // id → drone
-const hubs = new Map();     // id → hub
-// ... etc
+class DataAccessLayer {
+  constructor(db) {
+    this.db = db;
+  }
+  
+  getDrones(userId) {
+    return this.db.prepare(
+      'SELECT * FROM drones WHERE user_id = ?'
+    ).all(userId);
+  }
+  
+  createDrone(userId, data) {
+    // Insert with user_id automatically
+  }
+}
 ```
 
-### 2. Server-Sent Events (SSE)
+### 3. User Ownership Model
+
+**Decision**: Every entity has a `user_id` for multi-user support.
+
+**Rationale**:
+- True data isolation between users
+- Each user sees only their own data
+- Simple to implement with foreign keys
+- Cascading deletes on user removal
+
+**Trade-offs**:
+- All queries must include user context
+- Slightly more complex queries
+
+### 4. Server-Sent Events (SSE)
 
 **Decision**: Use SSE instead of WebSockets for real-time updates.
 
 **Rationale**:
 - Simpler unidirectional communication (server → client)
 - Built-in reconnection handling
-- Sufficient for use case (no client → server real-time needed)
-- Works well with HTTP/1.1
-
-**Trade-offs**:
-- No bidirectional communication
-- Limited to server-to-client updates
+- Sufficient for use case
+- User-scoped event broadcasting
 
 **Implementation**:
 ```javascript
-const sseClients = new Set();
+const userSSEClients = new Map(); // userId → Set of res
 
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  sseClients.add(res);
-  // Send snapshot
-  res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+app.get('/api/events', authenticateToken, (req, res) => {
+  broadcastSnapshotToUser(req.user.id);
+  if (!userSSEClients.has(req.user.id)) {
+    userSSEClients.set(req.user.id, new Set());
+  }
+  userSSEClients.get(req.user.id).add(res);
 });
 
-function broadcast(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(res => res.write(msg));
+function broadcastToUser(userId, data) {
+  const clients = userSSEClients.get(userId);
+  if (clients) {
+    const msg = `data: ${JSON.stringify(data)}\n\n`;
+    clients.forEach(res => res.write(msg));
+  }
 }
-```
-
-### 3. SQLite for User Data
-
-**Decision**: Use SQLite with better-sqlite3 for persistent user data.
-
-**Rationale**:
-- No separate database server needed
-- Synchronous API simplifies code
-- Good for single-server deployments
-- Small data volume (users only)
-
-**Trade-offs**:
-- Not suitable for horizontal scaling
-- Limited concurrent writes
-
-### 4. Round-Robin Fleet Assignment
-
-**Decision**: Use round-robin algorithm for automatic fleet-to-mission assignment.
-
-**Rationale**:
-- Distributes workload evenly across fleets
-- Simple to implement
-- Prevents fleet exhaustion
-- Deterministic behavior
-
-**Implementation**:
-```javascript
-const hubFleetAssignments = new Map(); // hubId → nextFleetIndex
-
-// In assignment logic
-const nextIndex = hubFleetAssignments.get(hubId) || 0;
-const selectedFleet = hubFleets[nextIndex % hubFleets.length];
-hubFleetAssignments.set(hubId, nextIndex + 1);
 ```
 
 ### 5. A* Pathfinding
@@ -127,7 +137,6 @@ hubFleetAssignments.set(hubId, nextIndex + 1);
 - Efficient for graph-based pathfinding
 - Considers road types and unit capabilities
 - Provides optimal paths
-- Well-understood algorithm
 
 **Implementation**:
 ```javascript
@@ -137,49 +146,75 @@ function findPathOnRoads(startLat, startLng, endLat, endLng, unitType) {
 }
 ```
 
+### 6. Radio Tower System
+
+**Decision**: Radio towers implemented as specialized ground units.
+
+**Rationale**:
+- Reuse ground unit infrastructure
+- Flexible placement anywhere
+- Configurable range and effects
+- Visual range circles on map
+
+**Implementation**:
+```javascript
+// Ground units with is_radio_tower = 1
+const towers = dal.getRadioTowers(userId);
+// Each tower has radio_range_meters and radio_effects
+```
+
 ## Design Patterns
 
-### Repository Pattern (Implicit)
+### Repository Pattern (via DAL)
 
-Each entity type has implicit repository methods:
+Each entity type has repository methods in the Data Access Layer:
 
 ```javascript
 // GET all
-app.get('/api/drones', (_req, res) => {
-  res.json([...drones.values()]);
+app.get('/api/drones', authenticateToken, (req, res) => {
+  const drones = dal.getDrones(req.user.id);
+  res.json(drones);
 });
 
 // GET by ID
-app.get('/api/drones/:id', (req, res) => {
-  const drone = drones.get(req.params.id);
+app.get('/api/drones/:id', authenticateToken, (req, res) => {
+  const drone = dal.getDrone(req.user.id, req.params.id);
   if (!drone) return res.status(404).json({ error: 'Not found' });
   res.json(drone);
 });
 
 // POST create
-app.post('/api/drones/:id/location', (req, res) => {
-  // Create or update
+app.post('/api/drones/:id/location', authenticateToken, (req, res) => {
+  const drone = dal.createDrone(req.user.id, req.body);
+  broadcastToUser(req.user.id, { type: 'drone:create', drone });
+  res.status(201).json(drone);
 });
 
 // DELETE
-app.delete('/api/drones/:id', (req, res) => {
-  drones.delete(req.params.id);
-  broadcast({ type: 'remove', id: req.params.id });
+app.delete('/api/drones/:id', authenticateToken, (req, res) => {
+  if (!dal.deleteDrone(req.user.id, req.params.id)) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  broadcastToUser(req.user.id, { type: 'drone:remove', id: req.params.id });
+  res.json({ success: true });
 });
 ```
 
 ### Observer Pattern (SSE Broadcasting)
 
-All changes are broadcast to connected clients:
+All changes are broadcast to connected clients for that user:
 
 ```javascript
-function broadcast(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(res => res.write(msg));
+function broadcastToUser(userId, data) {
+  const clients = userSSEClients.get(userId);
+  if (clients) {
+    const msg = `data: ${JSON.stringify(data)}\n\n`;
+    clients.forEach(res => res.write(msg));
+  }
 }
 
-function broadcastDrone(drone) {
-  broadcast({ type: 'drone:update', drone });
+function broadcastDroneUpdate(userId, drone) {
+  broadcastToUser(userId, { type: 'drone:update', drone });
 }
 ```
 
@@ -201,22 +236,22 @@ function droneIcon(status) {
 
 ### Create Flow
 ```
-Client POST → Validate → Create Entity → Broadcast → Return Entity
+Client POST → Authenticate → Validate → DAL.create → Broadcast → Return Entity
 ```
 
 ### Update Flow
 ```
-Client POST → Find Entity → Update Fields → Broadcast → Return Entity
+Client POST → Authenticate → DAL.get → Validate → DAL.update → Broadcast → Return Entity
 ```
 
 ### Delete Flow
 ```
-Client DELETE → Find Entity → Delete → Broadcast Remove → Return Success
+Client DELETE → Authenticate → DAL.delete → Broadcast Remove → Return Success
 ```
 
 ### Real-time Sync Flow
 ```
-Client Connect SSE → Send Snapshot → Wait for Changes → Broadcast Updates
+Client Connect SSE → Authenticate → Send Snapshot → Wait for Changes → Broadcast Updates
 ```
 
 ## Critical Implementation Paths
@@ -226,7 +261,7 @@ Client Connect SSE → Send Snapshot → Wait for Changes → Broadcast Updates
 1. **Request Received**: `POST /api/units/:id/move`
 2. **Validation**: Check target is valid (not in no-go zone, on water, etc.)
 3. **Path Calculation**: A* for ground units, direct for others
-4. **Path Storage**: Save path to unit's `currentPath`
+4. **Path Storage**: Save path to unit's `current_path`
 5. **Simulation Start**: `setInterval` for periodic updates
 6. **Position Updates**: Calculate new position, broadcast
 7. **Completion**: Stop simulation when reached
@@ -240,18 +275,26 @@ Client Connect SSE → Send Snapshot → Wait for Changes → Broadcast Updates
 5. **Assign**: Update statuses, broadcast
 6. **Monitor**: Check end conditions every 2 seconds
 
+### Radio Tower Pipeline
+
+1. **Ground Unit Created**: With `is_radio_tower = 1`
+2. **Range Configured**: `radio_range_meters` set
+3. **Effects Defined**: `radio_effects` JSON stored
+4. **Visualized**: Circle overlay on map
+5. **Applied**: Effects calculated for units in range
+
 ## Scalability Considerations
 
 ### Current Limitations
 - Single server process
-- In-memory state
 - SQLite database
 - SSE connections per process
+- All data in single database
 
 ### Scaling Paths
 1. **Vertical**: Increase server resources
 2. **Horizontal** (future):
-   - Redis for distributed state
+   - Redis for distributed SSE and state
    - PostgreSQL for database
    - WebSocket + pub/sub for real-time
    - Load balancer for distribution
@@ -259,4 +302,4 @@ Client Connect SSE → Send Snapshot → Wait for Changes → Broadcast Updates
 ---
 
 *Created: 2024*
-*Last Updated: 2024*
+*Last Updated: 2026-04*

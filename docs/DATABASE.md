@@ -1,546 +1,332 @@
-# 🗄️ Database Documentation
+# 🗄️ Database Schema
 
-This document describes the database schema and data models used in the Drone Head application.
+This document describes the SQLite database schema used by the Drone Head application. All tables include user-scoped access control via `user_id` foreign keys.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [User Tables](#user-tables)
+- [Entity Tables](#entity-tables)
+- [Infrastructure Tables](#infrastructure-tables)
+- [Indexes](#indexes)
+- [Migrations](#migrations)
+
+---
 
 ## Overview
 
-The application uses two types of data storage:
+The database uses SQLite with the following characteristics:
+- **User-Scoped**: All entity tables include `user_id` for data isolation
+- **Foreign Keys**: Cascade deletes ensure data integrity
+- **JSON Fields**: Complex data stored as JSON strings
+- **Timestamps**: Automatic `created_at` and `updated_at` fields
 
-1. **In-Memory Stores** - For real-time entity data (drones, hubs, fleets, etc.)
-2. **SQLite Database** - For persistent user data (users, profiles, saved states)
-
----
-
-## In-Memory Data Stores
-
-All real-time entity data is stored in JavaScript `Map` objects for O(1) lookup performance.
-
-### Data Store Summary
-
-| Store | Purpose | Persistence |
-|-------|---------|-------------|
-| `drones` | Active drones | ❌ Lost on restart |
-| `hubs` | Base locations | ❌ Lost on restart |
-| `fleets` | Drone groups | ❌ Lost on restart |
-| `missions` | Mission queue | ❌ Lost on restart |
-| `waypoints` | Location markers | ❌ Lost on restart |
-| `noGoZones` | Restricted areas | ❌ Lost on restart |
-| `groundUnits` | Ground units | ❌ Lost on restart |
-| `roads` | Road network | ❌ Lost on restart |
-| `walkablePaths` | Foot paths | ❌ Lost on restart |
-| `navalUnits` | Naval units | ❌ Lost on restart |
-| `waterAreas` | Water boundaries | ❌ Lost on restart |
-| `simulations` | Active simulations | ❌ Lost on restart |
-
----
-
-## Entity Data Models
-
-### Drone
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "drone-1")
-  name: string,         // Display name
-  lat: number,          // Latitude
-  lng: number,          // Longitude
-  altitude: number,     // Altitude in meters
-  speed: number,        // Speed in km/h
-  status: string,       // "active", "idle", "warning"
-  battery: number,      // Battery percentage (0-100)
-  hubId: string|null,   // Assigned hub (null if unassigned)
-  updatedAt: string     // ISO timestamp
-}
+### Connection String
 ```
-
-### Hub
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "hub-1")
-  name: string,         // Display name
-  lat: number,          // Latitude
-  lng: number,          // Longitude
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Fleet
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "fleet-1")
-  hubId: string,        // Parent hub
-  name: string,         // Display name
-  droneIds: string[],   // Array of drone IDs
-  status: string,       // "idle", "on-mission"
-  currentMissionId: string|null, // Active mission
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Mission
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "mission-1")
-  hubId: string,        // Parent hub
-  title: string,        // Mission title
-  type: string,         // "general", "surveillance", "delivery", "search", "inspection"
-  requiredDrones: number, // Minimum drones needed
-  priority: number,     // Lower = higher priority (default: 100)
-  status: string,       // "queued", "active", "done"
-  assignedFleetId: string|null, // Assigned fleet
-  waypointId: string|null, // Target waypoint
-  endCondition: string, // "manual", "arrival", "drone_reached", "time_elapsed", "fleet_idle"
-  endConditionValue: any, // Condition-specific value
-  createdAt: string,    // ISO timestamp
-  startedAt: string|null, // When mission became active
-  completedAt: string|null  // When mission completed
-}
-```
-
-### Waypoint
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "waypoint-1")
-  name: string,         // Display name
-  type: string,         // "hub", "drone", "ground-unit", "naval-unit", "coordinates"
-  entityId: string|null, // Referenced entity ID
-  lat: number,          // Latitude
-  lng: number,          // Longitude
-  hubId: string|null,   // Associated hub
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Ground Unit
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "ground-1")
-  name: string,         // Display name
-  type: string,         // "humans", "ifv", "tank", "truck"
-  lat: number,          // Latitude
-  lng: number,          // Longitude
-  speed: number,        // Speed in km/h
-  status: string,       // "idle", "moving", "warning"
-  battery: number,      // Battery percentage (0-100)
-  hubId: string|null,   // Assigned hub
-  onRoad: boolean,      // Currently on road
-  currentPath: number[][], // Path coordinates [[lat,lng],...]
-  pathIndex: number,    // Current waypoint index
-  updatedAt: string     // ISO timestamp
-}
-```
-
-### Road
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "road-1")
-  name: string,         // Display name
-  type: string,         // "highway", "street", "residential", "avenue", "footpath", "sidewalk", "trail"
-  coordinates: number[][], // Path coordinates [[lat,lng],...]
-  speedLimit: number,   // Default speed limit in km/h
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Walkable Path
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "path-1")
-  name: string,         // Display name
-  type: string,         // "footpath", "sidewalk", "trail", "bike-path"
-  coordinates: number[][], // Path coordinates [[lat,lng],...]
-  createdAt: string     // ISO timestamp
-}
-```
-
-### No-Go Zone
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "nogo-1")
-  name: string,         // Display name
-  coordinates: number[][], // Polygon coordinates [[lat,lng],...]
-  ruleset: string,      // Restriction description
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Naval Unit
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "naval-1")
-  name: string,         // Display name
-  type: string,         // "fast-boat", "battleship", "aircraft-carrier"
-  lat: number,          // Latitude
-  lng: number,          // Longitude
-  speed: number,        // Speed in km/h
-  status: string,       // "idle", "moving", "warning"
-  battery: number,      // Battery percentage (0-100)
-  hubId: string|null,   // Assigned hub
-  currentPath: number[][], // Path coordinates [[lat,lng],...]
-  pathIndex: number,    // Current waypoint index
-  updatedAt: string     // ISO timestamp
-}
-```
-
-### Water Area
-
-```javascript
-{
-  id: string,           // Unique identifier (e.g., "water-1")
-  name: string,         // Display name
-  coordinates: number[][], // Polygon coordinates [[lat,lng],...]
-  createdAt: string     // ISO timestamp
-}
-```
-
-### Simulation State
-
-```javascript
-{
-  droneId: string,      // Drone being simulated
-  targetLat: number,    // Target latitude
-  targetLng: number,    // Target longitude
-  speed: number,        // Simulation speed
-  intervalId: number    // setInterval ID
-}
+Database: backend/data/data.db
+Driver: better-sqlite3
 ```
 
 ---
 
-## SQLite Database Schema
+## User Tables
 
-User data is persisted in SQLite at `backend/data/data.db`.
-
-### Database Initialization
-
-```sql
--- Created on first startup if not exists
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS user_profiles (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER UNIQUE NOT NULL,
-  display_name TEXT,
-  email TEXT,
-  preferences TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
-
-CREATE TABLE IF NOT EXISTS user_states (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  state_data TEXT NOT NULL,
-  name TEXT DEFAULT 'Saved State',
-  saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_states_user_id ON user_states(user_id);
-```
-
-### User Table
+### `users`
+Core user account information.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| id | INTEGER | PRIMARY KEY, AUTOINCREMENT | Unique user ID |
-| username | TEXT | UNIQUE, NOT NULL | Username |
-| password_hash | TEXT | NOT NULL | Bcrypt password hash |
-| created_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Registration timestamp |
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique user ID |
+| `username` | TEXT | UNIQUE NOT NULL | Login username |
+| `password_hash` | TEXT | NOT NULL | Bcrypt hashed password |
+| `role` | TEXT | DEFAULT 'user' | User role (user/admin) |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Account creation date |
 
-**Usage:**
-```sql
--- Insert user
-INSERT INTO users (username, password_hash) VALUES ('john', '$2b$10$...');
-
--- Find user
-SELECT * FROM users WHERE username = 'john';
-
--- Delete user
-DELETE FROM users WHERE id = 1;
-```
-
-### User Profile Table
+### `user_profiles`
+Extended user profile information.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| id | INTEGER | PRIMARY KEY, AUTOINCREMENT | Unique profile ID |
-| user_id | INTEGER | UNIQUE, NOT NULL, FK | Reference to users.id |
-| display_name | TEXT | - | Display name |
-| email | TEXT | - | Email address |
-| preferences | TEXT | - | JSON preferences |
-| created_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation timestamp |
-| updated_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update timestamp |
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique profile ID |
+| `user_id` | INTEGER | UNIQUE NOT NULL, FK → users.id | Reference to user |
+| `display_name` | TEXT | - | Display name |
+| `email` | TEXT | - | Email address |
+| `preferences` | TEXT | - | JSON user preferences |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Profile creation date |
+| `updated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update date |
 
-**Usage:**
-```sql
--- Get profile
-SELECT * FROM user_profiles WHERE user_id = 1;
-
--- Update profile
-UPDATE user_profiles 
-SET display_name = 'John Doe', email = 'john@example.com'
-WHERE user_id = 1;
-
--- Insert or update
-INSERT INTO user_profiles (user_id, display_name) VALUES (1, 'John Doe')
-ON CONFLICT(user_id) DO UPDATE SET
-  display_name = excluded.display_name,
-  updated_at = CURRENT_TIMESTAMP;
-```
-
-### User States Table
+### `user_states`
+Saved application states for users.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| id | INTEGER | PRIMARY KEY, AUTOINCREMENT | Unique state ID |
-| user_id | INTEGER | NOT NULL, FK | Reference to users.id |
-| state_data | TEXT | NOT NULL | JSON state data |
-| name | TEXT | DEFAULT 'Saved State' | State name |
-| saved_at | TEXT | DEFAULT CURRENT_TIMESTAMP | Save timestamp |
-
-**Usage:**
-```sql
--- Save state
-INSERT INTO user_states (user_id, state_data, name) 
-VALUES (1, '{"drones":[...]}', 'My State');
-
--- Get states
-SELECT id, name, saved_at FROM user_states WHERE user_id = 1 ORDER BY saved_at DESC;
-
--- Get full state
-SELECT * FROM user_states WHERE id = 1 AND user_id = 1;
-
--- Delete state
-DELETE FROM user_states WHERE id = 1 AND user_id = 1;
-```
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique state ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Reference to user |
+| `state_data` | TEXT | NOT NULL | JSON serialized state |
+| `name` | TEXT | DEFAULT 'Saved State' | State name |
+| `saved_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Save timestamp |
 
 ---
 
-## Entity Relationships
+## Entity Tables
 
-### Diagram
+### `drones`
+Drone unit tracking and management.
 
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique drone ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Drone name |
+| `lat` | REAL | NOT NULL | Latitude |
+| `lng` | REAL | NOT NULL | Longitude |
+| `altitude` | REAL | DEFAULT 0 | Altitude in meters |
+| `speed` | REAL | DEFAULT 0 | Current speed |
+| `status` | TEXT | DEFAULT 'active' | active/idle/warning |
+| `battery` | REAL | DEFAULT 100 | Battery percentage |
+| `hub_id` | INTEGER | - | Assigned hub |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+| `updated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update |
+
+### `hubs`
+Base locations for organizing units.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique hub ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Hub name |
+| `lat` | REAL | NOT NULL | Latitude |
+| `lng` | REAL | NOT NULL | Longitude |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `fleets`
+Groups of drones assigned to hubs.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique fleet ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `hub_id` | INTEGER | NOT NULL, FK → hubs.id | Parent hub |
+| `name` | TEXT | NOT NULL | Fleet name |
+| `drone_ids` | TEXT | DEFAULT '[]' | JSON array of drone IDs |
+| `status` | TEXT | DEFAULT 'idle' | idle/on-mission |
+| `current_mission_id` | INTEGER | - | Active mission |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `missions`
+Mission definitions and tracking.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique mission ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `hub_id` | INTEGER | NOT NULL, FK → hubs.id | Parent hub |
+| `title` | TEXT | NOT NULL | Mission title |
+| `type` | TEXT | DEFAULT 'general' | Mission type |
+| `required_drones` | INTEGER | DEFAULT 1 | Minimum drones needed |
+| `priority` | INTEGER | DEFAULT 100 | Queue priority (lower = higher) |
+| `status` | TEXT | DEFAULT 'queued' | queued/active/done |
+| `assigned_fleet_id` | INTEGER | - | Assigned fleet |
+| `waypoint_id` | INTEGER | - | Target waypoint |
+| `end_condition` | TEXT | DEFAULT 'manual' | Completion condition |
+| `end_condition_value` | TEXT | - | Condition parameter |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+| `started_at` | TEXT | - | Start timestamp |
+| `completed_at` | TEXT | - | Completion timestamp |
+
+### `ground_units`
+Ground unit entities (includes radio towers).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique unit ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Unit name |
+| `type` | TEXT | DEFAULT 'truck' | humans/ifv/tank/truck |
+| `lat` | REAL | NOT NULL | Latitude |
+| `lng` | REAL | NOT NULL | Longitude |
+| `speed` | REAL | DEFAULT 70 | Current speed |
+| `status` | TEXT | DEFAULT 'idle' | idle/moving |
+| `battery` | REAL | DEFAULT 100 | Battery percentage |
+| `hub_id` | INTEGER | - | Assigned hub |
+| `on_road` | INTEGER | DEFAULT 0 | On road flag |
+| `current_path` | TEXT | DEFAULT '[]' | JSON path coordinates |
+| `path_index` | INTEGER | DEFAULT 0 | Current path position |
+| `is_radio_tower` | INTEGER | DEFAULT 0 | Radio tower flag |
+| `radio_range_meters` | REAL | - | Radio coverage range |
+| `radio_effects` | TEXT | - | JSON radio effects |
+| `radio_active` | INTEGER | DEFAULT 0 | Radio on/off |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+| `updated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update |
+
+### `naval_units`
+Naval unit entities.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique unit ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Unit name |
+| `type` | TEXT | DEFAULT 'fast-boat' | fast-boat/battleship/aircraft-carrier |
+| `lat` | REAL | NOT NULL | Latitude |
+| `lng` | REAL | NOT NULL | Longitude |
+| `speed` | REAL | DEFAULT 80 | Current speed |
+| `status` | TEXT | DEFAULT 'idle' | idle/moving |
+| `battery` | REAL | DEFAULT 100 | Battery percentage |
+| `hub_id` | INTEGER | - | Assigned hub |
+| `current_path` | TEXT | DEFAULT '[]' | JSON path coordinates |
+| `path_index` | INTEGER | DEFAULT 0 | Current path position |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+| `updated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update |
+
+---
+
+## Infrastructure Tables
+
+### `roads`
+Road network definition.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique road ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Road name |
+| `type` | TEXT | DEFAULT 'street' | street/highway/footpath |
+| `coordinates` | TEXT | NOT NULL | JSON array of [lat,lng] |
+| `speed_limit` | REAL | DEFAULT 50 | Speed limit |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `walkable_paths`
+Footpaths for human units.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique path ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Path name |
+| `type` | TEXT | DEFAULT 'footpath' | Path type |
+| `coordinates` | TEXT | NOT NULL | JSON array of [lat,lng] |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `no_go_zones`
+Restricted areas.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique zone ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Zone name |
+| `coordinates` | TEXT | NOT NULL | JSON polygon coordinates |
+| `ruleset` | TEXT | DEFAULT 'FORBIDDEN: ...' | Access rules |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `water_areas`
+Water zones for naval units.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique area ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Area name |
+| `coordinates` | TEXT | NOT NULL | JSON polygon coordinates |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+### `waypoints`
+Navigation waypoints.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique waypoint ID |
+| `user_id` | INTEGER | NOT NULL, FK → users.id | Owner |
+| `name` | TEXT | NOT NULL | Waypoint name |
+| `type` | TEXT | NOT NULL | hub/drone/ground-unit/naval-unit/coordinates |
+| `entity_id` | INTEGER | - | Linked entity ID |
+| `lat` | REAL | NOT NULL | Latitude |
+| `lng` | REAL | NOT NULL | Longitude |
+| `hub_id` | INTEGER | - | Associated hub |
+| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Creation date |
+
+---
+
+## Indexes
+
+| Index | Table | Columns | Purpose |
+|-------|-------|---------|---------|
+| `idx_user_profiles_user_id` | user_profiles | user_id | Fast user profile lookup |
+| `idx_user_states_user_id` | user_states | user_id | Fast state lookup |
+| `idx_drones_user_id` | drones | user_id | User-scoped drone queries |
+| `idx_hubs_user_id` | hubs | user_id | User-scoped hub queries |
+| `idx_fleets_user_id` | fleets | user_id | User-scoped fleet queries |
+| `idx_missions_user_id` | missions | user_id | User-scoped mission queries |
+| `idx_ground_units_user_id` | ground_units | user_id | User-scoped ground unit queries |
+| `idx_roads_user_id` | roads | user_id | User-scoped road queries |
+| `idx_walkable_paths_user_id` | walkable_paths | user_id | User-scoped path queries |
+| `idx_no_go_zones_user_id` | no_go_zones | user_id | User-scoped zone queries |
+| `idx_naval_units_user_id` | naval_units | user_id | User-scoped naval unit queries |
+| `idx_water_areas_user_id` | water_areas | user_id | User-scoped water area queries |
+| `idx_waypoints_user_id` | waypoints | user_id | User-scoped waypoint queries |
+
+---
+
+## Migrations
+
+### `migrations` Table
+Tracks applied database migrations.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Migration ID |
+| `name` | TEXT | UNIQUE NOT NULL | Migration name |
+| `applied_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Application date |
+
+### Migration Files Location
 ```
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│    User     │───────│  Profile    │       │   States    │
-│             │   1:1 │             │       │   1:N       │
-└─────────────┘       └─────────────┘       └─────────────┘
-
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│    Hub      │───────│   Fleet     │───────│  Mission    │
-│             │   1:N │             │   1:1 │   1:N       │
-└─────────────┘       └─────────────┘       └─────────────┘
-       │                     │
-       │ 1:N                 │ N:1 (via droneIds)
-       ▼                     ▼
-┌─────────────┐       ┌─────────────┐
-│   Drone     │◄──────│             │
-│             │       └─────────────┘
-└─────────────┘
+backend/migrations/
+├── 001_add_user_ownership.sql
+├── 002_add_radio_tower_support.sql
+└── ...
 ```
-
-### Relationships
-
-| From | To | Type | Description |
-|------|-----|------|-------------|
-| User | Profile | 1:1 | One profile per user |
-| User | States | 1:N | Multiple saved states |
-| Hub | Fleets | 1:N | Multiple fleets per hub |
-| Hub | Missions | 1:N | Multiple missions per hub |
-| Hub | Drones | 1:N | Multiple drones per hub |
-| Hub | Ground Units | 1:N | Multiple ground units per hub |
-| Hub | Naval Units | 1:N | Multiple naval units per hub |
-| Fleet | Drones | N:N | Drones via droneIds array |
-| Fleet | Mission | 1:1 | One active mission per fleet |
-| Mission | Waypoint | N:1 | Optional waypoint reference |
 
 ---
 
 ## Data Access Patterns
 
-### In-Memory Operations
+### User-Scoped Queries (Always Include user_id)
+```sql
+-- Get all drones for a user
+SELECT * FROM drones WHERE user_id = ?;
 
-```javascript
-// Create
-const id = `drone-${seq++}`;
-const drone = { id, ...data };
-drones.set(id, drone);
+-- Get single entity by ID and user
+SELECT * FROM drones WHERE user_id = ? AND id = ?;
 
-// Read
-const drone = drones.get(id);
-const allDrones = [...drones.values()];
+-- Create new entity
+INSERT INTO drones (user_id, name, lat, lng) VALUES (?, ?, ?, ?);
 
-// Update
-const drone = drones.get(id);
-drone.lat = newLat;
-drones.set(id, drone);
+-- Update entity
+UPDATE drones SET lat = ?, lng = ?, updated_at = CURRENT_TIMESTAMP
+WHERE user_id = ? AND id = ?;
 
-// Delete
-drones.delete(id);
-
-// Query
-const hubDrones = [...drones.values()].filter(d => d.hubId === hubId);
+-- Delete entity
+DELETE FROM drones WHERE user_id = ? AND id = ?;
 ```
 
-### SQLite Operations
+### Joins Across Tables
+```sql
+-- Get missions with hub info
+SELECT m.*, h.name as hub_name
+FROM missions m
+JOIN hubs h ON m.hub_id = h.id
+WHERE m.user_id = ?;
 
-```javascript
-const db = new Database('data/data.db');
-
-// Insert
-const stmt = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
-const result = stmt.run(username, passwordHash);
-const userId = result.lastInsertRowid;
-
-// Select single
-const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-
-// Select multiple
-const users = db.prepare('SELECT * FROM users').all();
-
-// Update
-db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
-
-// Delete
-db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-
-// Transaction
-const insertUser = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
-const insertProfile = db.prepare('INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)');
-
-db.transaction((username, passwordHash, displayName) => {
-  const result = insertUser.run(username, passwordHash);
-  insertProfile.run(result.lastInsertRowid, displayName);
-})(username, passwordHash, displayName);
+-- Get fleets with drone count
+SELECT f.*, COUNT(d.id) as drone_count
+FROM fleets f
+LEFT JOIN drones d ON f.id = d.hub_id
+WHERE f.user_id = ?
+GROUP BY f.id;
 ```
 
 ---
 
-## Data Persistence Strategy
-
-### What's Persisted
-
-- User accounts and credentials
-- User profiles and preferences
-- Saved application states
-
-### What's Not Persisted
-
-- Active drones and their positions
-- Hubs, fleets, missions
-- Ground units, naval units
-- Roads, paths, zones
-- Water areas, waypoints
-
-### Why
-
-**In-Memory Benefits:**
-- Fast O(1) lookups
-- Easy broadcasting of changes
-- No database overhead for real-time ops
-- Simple state management
-
-**SQLite for User Data:**
-- Accounts need to survive restarts
-- Saved states are user-specific
-- Small data volume
-
-### Implications
-
-- **On server restart:** All operational data is lost
-- **Development workflow:** Recreate entities after restart
-- **Production consideration:** Consider persisting operational data
-
----
-
-## Migration Guide
-
-### Adding a New Entity Type
-
-1. **Define in-memory store:**
-```javascript
-const myEntities = new Map();
-let myEntitySeq = 1;
-```
-
-2. **Add broadcast function:**
-```javascript
-function broadcastMyEntity(entity) {
-  broadcast({ type: 'myentity:update', entity });
-}
-
-function broadcastMyEntityRemove(id) {
-  broadcast({ type: 'myentity:remove', id });
-}
-```
-
-3. **Add to SSE snapshot:**
-```javascript
-res.write(`data: ${JSON.stringify({
-  // ... existing
-  myEntities: [...myEntities.values()],
-})}\n\n`);
-```
-
-4. **Add CRUD routes** (see API documentation)
-
----
-
-## Performance Considerations
-
-### In-Memory Stores
-
-- **Lookup:** O(1) via Map.get()
-- **Iteration:** O(n) for filtering
-- **Memory:** All data in RAM
-- **Scale:** Limited by available memory
-
-### SQLite Queries
-
-- **Indexed:** user_id on profiles and states
-- **Small dataset:** User data is minimal
-- **Synchronous:** Blocking but fast for small data
-
-### Optimization Tips
-
-1. **Batch operations:**
-```javascript
-// Instead of multiple broadcasts
-entities.forEach(e => broadcastEntity(e));
-
-// Use batch broadcast
-broadcast({ type: 'batch', entities: [...entities.values()] });
-```
-
-2. **Filter before iterate:**
-```javascript
-// Good
-const result = [...drones.values()].filter(d => d.hubId === id);
-
-// Avoid
-for (const [key, value] of drones.entries()) {
-  if (value.hubId === id) { /* ... */ }
-}
-```
-
----
-
-*Last updated: 2024*
+*Last updated: 2026-04*

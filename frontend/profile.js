@@ -30,8 +30,8 @@ const profileInitial = document.getElementById('profile-initial');
 // Initialize authentication
 async function initProfile() {
   // Get stored token
-  authToken = localStorage.getItem('authToken');
-  const storedUser = localStorage.getItem('currentUser');
+  authToken = localStorage.getItem('token');
+  const storedUser = localStorage.getItem('user');
   
   if (!authToken || !storedUser) {
     window.location.href = '/login/login.html';
@@ -60,8 +60,8 @@ async function initProfile() {
     
   } catch (error) {
     console.error('Error loading profile:', error);
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/login/login.html';
   }
 }
@@ -198,8 +198,8 @@ async function handleDeleteAccount() {
     }
     
     // Clear local storage and redirect to login
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     
     showToast('Account deleted successfully');
     setTimeout(() => {

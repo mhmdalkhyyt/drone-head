@@ -1,6 +1,6 @@
 # 🏗️ System Architecture
 
-This document describes the architecture of the Drone Head application, a real-time location tracking and mission management system for drones, ground units, and naval units.
+This document describes the architecture of the Drone Head application, a real-time location tracking and mission management system for drones, ground units, and naval units with full user-based access control and persistent data storage.
 
 ## Table of Contents
 
@@ -30,18 +30,14 @@ This document describes the architecture of the Drone Head application, a real-t
 │  │  - Authentication│        │  └───────────────────────────┘ │  │
 │  └─────────────────┘         │                                 │  │
 │                              │  ┌───────────────────────────┐ │  │
-│                              │  │   In-Memory Stores        │ │  │
-│                              │  │   - drones, hubs, fleets  │ │  │
-│                              │  │   - missions, waypoints   │ │  │
-│                              │  │   - groundUnits, roads    │ │  │
-│                              │  │   - navalUnits, waterAreas│ │  │
+│                              │  │   Data Access Layer       │ │  │
+│                              │  │   (user-scoped ops)       │ │  │
 │                              │  └───────────────────────────┘ │  │
 │                              │                                 │  │
 │                              │  ┌───────────────────────────┐ │  │
 │                              │  │   SQLite Database         │ │  │
-│                              │  │   - users                 │ │  │
-│                              │  │   - user_profiles         │ │  │
-│                              │  │   - user_states           │ │  │
+│                              │  │   - All entities          │ │  │
+│                              │  │   - User-scoped           │ │  │
 │                              │  └───────────────────────────┘ │  │
 │                              └─────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -56,7 +52,7 @@ This document describes the architecture of the Drone Head application, a real-t
 | Component | File | Responsibility |
 |-----------|------|----------------|
 | Main App | `frontend/app.js` | Map management, state sync, UI rendering |
-| Authentication | `frontend/auth.js` | Login/logout, token management |
+| Authentication | `frontend/auth-client.js` | Login/logout, token management, API calls |
 | Login Page | `frontend/login/login.js` | Login form handling |
 | Profile Page | `frontend/profile.js` | User profile management |
 | Map Layer | `frontend/app.js` (map) | Leaflet.js integration |
@@ -67,57 +63,34 @@ This document describes the architecture of the Drone Head application, a real-t
 | Component | Location | Responsibility |
 |-----------|----------|----------------|
 | Express Server | `backend/server.js` | HTTP API server |
-| Auth Middleware | `server.js:16-37` | JWT token verification |
-| API Routes | `server.js:125-2225` | RESTful endpoints |
-| In-Memory Stores | `server.js:88-119` | Real-time data caches |
-| SQLite Wrapper | `server.js:51-85` | Persistent user data |
-| SSE Handler | `server.js:2227-2251` | Server-Sent Events stream |
-| Simulations | `server.js:2253-2425` | Unit movement simulations |
-| Scheduler | `server.js:2427-2548` | Mission auto-assignment |
+| Auth Middleware | `server.js:23-44` | JWT token verification |
+| Ownership Middleware | `server.js:47-64` | Entity ownership validation |
+| API Routes | `server.js:1200-1600` | RESTful endpoints |
+| Data Access Layer | `backend/dataAccess.js` | User-scoped database operations |
+| SQLite Database | `server.js:69-305` | Persistent storage setup |
+| SSE Handler | `server.js:1581-1607` | Server-Sent Events stream |
+| Simulations | `server.js:1609-1752` | Unit movement simulations |
 
 ### Data Stores
 
-#### In-Memory Stores (Maps)
-```javascript
-const drones       = new Map(); // id → drone
-const hubs         = new Map(); // id → hub
-const fleets       = new Map(); // id → fleet
-const missions     = new Map(); // id → mission
-const waypoints    = new Map(); // id → waypoint
-const noGoZones    = new Map(); // id → no-go zone
-const groundUnits  = new Map(); // id → ground unit
-const roads        = new Map(); // id → road
-const walkablePaths= new Map(); // id → path
-const navalUnits   = new Map(); // id → naval unit
-const waterAreas   = new Map(); // id → water area
-const simulations  = new Map(); // id → simulation state
-```
+#### SQLite Database (All User-Scoped)
 
-#### SQLite Tables
-```sql
-users (
-    id INTEGER PRIMARY KEY,
-    username TEXT UNIQUE,
-    password_hash TEXT,
-    created_at TEXT
-)
-
-user_profiles (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER FK,
-    display_name TEXT,
-    email TEXT,
-    preferences TEXT
-)
-
-user_states (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER FK,
-    state_data TEXT,
-    name TEXT,
-    saved_at TEXT
-)
-```
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `users` | User accounts | id, username, password_hash, role |
+| `user_profiles` | User profile info | user_id, display_name, email |
+| `user_states` | Saved states | user_id, state_data, name |
+| `drones` | Drone units | user_id, name, lat, lng, battery |
+| `hubs` | Base locations | user_id, name, lat, lng |
+| `fleets` | Drone groups | user_id, hub_id, drone_ids, status |
+| `missions` | Mission definitions | user_id, hub_id, title, priority |
+| `ground_units` | Ground units | user_id, type, lat, lng, is_radio_tower |
+| `naval_units` | Naval units | user_id, type, lat, lng |
+| `roads` | Road network | user_id, name, type, coordinates |
+| `walkable_paths` | Footpaths | user_id, name, coordinates |
+| `no_go_zones` | Restricted areas | user_id, name, coordinates |
+| `water_areas` | Water zones | user_id, name, coordinates |
+| `waypoints` | Navigation points | user_id, name, type, lat, lng |
 
 ---
 
@@ -132,42 +105,48 @@ user_states (
 │  1. Connect  │                     │  1. Accept   │
 │     to /api/ │                     │     conn     │
 │     events   │                     │              │
-└──────────────┘                     └──────────────┘
-                                           │
-                                           ▼
-                                    ┌──────────────┐
-                                    │  Add to      │
-                                    │  sseClients  │
-                                    └──────────────┘
-                                           │
-                    ┌──────────────────────┴──────────────────────┐
-                    ▼                                             ▼
-           ┌──────────────┐                              ┌──────────────┐
-           │ Unit Update  │                              │  Entity      │
-           │  (Drone/     │                              │  Create/     │
-           │   Ground/    │                              │  Delete      │
-           │   Naval)     │                              │              │
-           └──────────────┘                              └──────────────┘
-                    │                                             │
-                    ▼                                             ▼
-           ┌──────────────┐                              ┌──────────────┐
-           │ broadcast()  │                              │ broadcast*   │
-           │  function    │                              │  (specific)  │
-           └──────────────┘                              └──────────────┘
-                    │                                             │
-                    └──────────────────────┬──────────────────────┘
-                                           ▼
-                                    ┌──────────────┐
-                                    │ Write to     │
-                                    │  all clients │
-                                    └──────────────┘
-                                           │
-                                           ▼
-                                    ┌──────────────┐
-                                    │   Frontend   │
-                                    │  receives    │
-                                    │  & updates   │
-                                    └──────────────┘
+└──────────────┘                     └──────┬───────┘
+                                            │
+                                            ▼
+                                     ┌──────────────┐
+                                     │  Authenticate│
+                                     │  & Get User  │
+                                     └──────┬───────┘
+                                            │
+                                            ▼
+                                     ┌──────────────┐
+                                     │ Send Snapshot│
+                                     │ to User      │
+                                     └──────┬───────┘
+                                            │
+                     ┌──────────────────────┴──────────────────────┐
+                     ▼                                             ▼
+            ┌──────────────┐                              ┌──────────────┐
+            │ Unit Update  │                              │  Entity      │
+            │  (Drone/     │                              │  Create/     │
+            │   Ground/    │                              │  Delete      │
+            │   Naval)     │                              │              │
+            └──────┬───────┘                              └──────┬───────┘
+                   │                                             │
+                   ▼                                             ▼
+            ┌──────────────┐                              ┌──────────────┐
+            │ DAL.update*  │                              │ DAL.delete*  │
+            │  Database    │                              │  Database    │
+            └──────┬───────┘                              └──────┬───────┘
+                   │                                             │
+                   ▼                                             ▼
+            ┌──────────────┐                              ┌──────────────┐
+            │ broadcastTo  │                              │ broadcastTo  │
+            │  User()      │                              │  User()      │
+            └──────┬───────┘                              └──────┬───────┘
+                   │                                             │
+                   └──────────────────────┬──────────────────────┘
+                                          ▼
+                                   ┌──────────────┐
+                                   │   Frontend   │
+                                   │  receives    │
+                                   │  & updates   │
+                                   └──────────────┘
 ```
 
 ### Mission Assignment Flow
@@ -176,22 +155,22 @@ user_states (
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Mission Scheduler (3s interval)              │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-        ┌─────────────────────────────────────────┐
-        │ For each hub:                           │
-        │   1. Get queued missions (sorted)       │
-        │   2. Get idle fleets                    │
-        │   3. Find capable fleet for top mission │
-        └─────────────────────────────────────────┘
-                              │
-                              ▼
-        ┌─────────────────────────────────────────┐
-        │ If capable fleet found:                 │
-        │   - Assign fleet to mission             │
-        │   - Update statuses                     │
-        │   - Broadcast updates                   │
-        └─────────────────────────────────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ For each user's hub:                    │
+         │   1. Get queued missions (sorted)       │
+         │   2. Get idle fleets                    │
+         │   3. Find capable fleet for top mission │
+         └─────────────────────────────────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ If capable fleet found:                 │
+         │   - Assign fleet to mission             │
+         │   - Update via DAL                      │
+         │   - Broadcast to user                   │
+         └─────────────────────────────────────────┘
 ```
 
 ### Pathfinding Flow (Ground Units)
@@ -276,52 +255,91 @@ user_states (
 ┌─────────────────────────────────────────────────────────────────┐
 │              POST /api/drones/:id/simulate                      │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-        ┌─────────────────────────────────────────┐
-        │ Validate target coordinates             │
-        │ Stop existing simulation if any         │
-        │ Create simulation state                 │
-        └─────────────────────────────────────────┘
-                              │
-                              ▼
-        ┌─────────────────────────────────────────┐
-        │ Interval Loop (500ms):                  │
-        │   1. Calculate distance to target       │
-        │   2. Check if reached (< 10m)           │
-        │   3. Check no-go zone entry             │
-        │   4. Calculate next position            │
-        │   5. Broadcast update                   │
-        └─────────────────────────────────────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-           ┌──────────────┐    ┌──────────────┐
-           │ Reached      │    │ Blocked by   │
-           │ target       │    │ no-go zone   │
-           └──────┬───────┘    └──────┬───────┘
-                  │                   │
-                  └─────────┬─────────┘
-                            ▼
-                   ┌──────────────┐
-                   │ Stop         │
-                   │ simulation   │
-                   └──────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ Validate target coordinates             │
+         │ Stop existing simulation if any         │
+         │ Create simulation state                 │
+         └─────────────────────────────────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ Interval Loop (500ms):                  │
+         │   1. Calculate distance to target       │
+         │   2. Check if reached (< 10m)           │
+         │   3. Check no-go zone entry             │
+         │   4. Calculate next position            │
+         │   5. Broadcast update to user           │
+         └─────────────────────────────────────────┘
+                               │
+                     ┌─────────┴─────────┐
+                     ▼                   ▼
+            ┌──────────────┐    ┌──────────────┐
+            │ Reached      │    │ Blocked by   │
+            │ target       │    │ no-go zone   │
+            └──────┬───────┘    └──────┬───────┘
+                   │                   │
+                   └─────────┬─────────┘
+                             ▼
+                    ┌──────────────┐
+                    │ Stop         │
+                    │ simulation   │
+                    └──────────────┘
+```
+
+### Radio Tower Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Ground Unit Created as Radio Tower                 │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ is_radio_tower = 1                      │
+         │ radio_range_meters configured           │
+         │ radio_effects defined                   │
+         └─────────────────────────────────────────┘
+                               │
+                               ▼
+         ┌─────────────────────────────────────────┐
+         │ Frontend displays:                      │
+         │   - Tower marker on map                 │
+         │   - Range circle overlay                │
+         │   - Radio active toggle                 │
+         └─────────────────────────────────────────┘
 ```
 
 ---
 
 ## Key Design Decisions
 
-### 1. In-Memory Data Stores
-**Decision**: Use JavaScript Maps for real-time entity storage  
+### 1. Persistent SQLite Storage
+**Decision**: All operational data stored in SQLite with user ownership  
 **Rationale**: 
-- O(1) lookup by ID
-- Easy iteration for broadcasting
-- No database overhead for real-time operations
-**Trade-off**: Data is lost on server restart (except user data in SQLite)
+- Data survives server restarts
+- No separate database server needed
+- User-scoped queries ensure data isolation
+**Trade-off**: Single-writer limitation, not suitable for horizontal scaling
 
-### 2. Server-Sent Events (SSE)
+### 2. Data Access Layer (DAL)
+**Decision**: Centralized class-based data access layer  
+**Rationale**:
+- Clean separation of database logic
+- Consistent user-scoped operations
+- Easier to maintain and test
+**Trade-off**: Additional abstraction layer
+
+### 3. User Ownership Model
+**Decision**: Every entity has a `user_id` for multi-user support  
+**Rationale**:
+- True data isolation between users
+- Simple to implement with foreign keys
+- Cascading deletes on user removal
+**Trade-off**: All queries must include user context
+
+### 4. Server-Sent Events (SSE)
 **Decision**: Use SSE instead of WebSockets  
 **Rationale**:
 - Simpler unidirectional communication
@@ -329,15 +347,15 @@ user_states (
 - Sufficient for server-to-client updates
 **Trade-off**: No client-to-server real-time messaging
 
-### 3. SQLite for User Data
-**Decision**: Use SQLite with better-sqlite3  
+### 5. SQLite for All Data
+**Decision**: Use SQLite with better-sqlite3 for all persistent data  
 **Rationale**:
 - No separate database server needed
 - Synchronous API simplifies code
 - Good for single-server deployments
 **Trade-off**: Not suitable for horizontal scaling
 
-### 4. A* Pathfinding Algorithm
+### 6. A* Pathfinding Algorithm
 **Decision**: Implement A* for ground unit pathfinding  
 **Rationale**:
 - Efficient for grid/graph-based pathfinding
@@ -345,7 +363,7 @@ user_states (
 - Provides optimal paths
 **Trade-off**: Requires graph construction from road data
 
-### 5. Round-Robin Fleet Assignment
+### 7. Round-Robin Fleet Assignment
 **Decision**: Use round-robin for mission assignment  
 **Rationale**:
 - Distributes workload evenly
@@ -353,23 +371,32 @@ user_states (
 - Prevents fleet exhaustion
 **Trade-off**: May not always select "best" fleet
 
+### 8. Radio Towers as Specialized Ground Units
+**Decision**: Radio towers implemented as ground units with special flag  
+**Rationale**:
+- Reuse ground unit infrastructure
+- Flexible placement anywhere
+- Configurable range and effects
+**Trade-off**: Mixed concerns in ground_units table
+
 ---
 
 ## Scalability Considerations
 
 ### Current Limitations
 
-1. **Single Server**: All data in memory, no distributed state
+1. **Single Server**: All data in single SQLite database
 2. **SQLite**: Single-file database, limited concurrent writes
-3. **SSE**: Each client maintains open connection
+3. **SSE**: Each client maintains open connection per user
+4. **In-Memory Simulations**: Simulation state lost on restart
 
 ### Potential Improvements
 
 | Area | Current | Scalable Alternative |
 |------|---------|---------------------|
-| Data Store | In-Memory Maps | Redis cluster |
-| Database | SQLite | PostgreSQL |
+| Data Store | SQLite | PostgreSQL |
 | Real-time | SSE | WebSocket + pub/sub |
+| State | In-Memory | Redis cluster |
 | Deployment | Single container | Kubernetes + load balancer |
 
 ### Horizontal Scaling Strategy
@@ -378,24 +405,24 @@ user_states (
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Load Balancer                            │
 └─────────────────────────────────────────────────────────────────┘
+               │                    │                    │
+               ▼                    ▼                    ▼
+       ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+       │  Server 1   │      │  Server 2   │      │  Server 3   │
+       └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
               │                    │                    │
-              ▼                    ▼                    ▼
-      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-      │  Server 1   │      │  Server 2   │      │  Server 3   │
-      └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
-             │                    │                    │
-             └────────────────────┼────────────────────┘
-                                  ▼
-                    ┌─────────────────────────┐
-                    │      Redis Cluster      │
-                    │   (Distributed state)   │
-                    └─────────────────────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────┐
-                    │    PostgreSQL Master    │
-                    │   (Persistent storage)  │
-                    └─────────────────────────┘
+              └────────────────────┼────────────────────┘
+                                   ▼
+                     ┌─────────────────────────┐
+                     │      Redis Cluster      │
+                     │   (Distributed state)   │
+                     └─────────────────────────┘
+                                   │
+                                   ▼
+                     ┌─────────────────────────┐
+                     │    PostgreSQL Master    │
+                     │   (Persistent storage)  │
+                     └─────────────────────────┘
 ```
 
 ---
@@ -405,16 +432,17 @@ user_states (
 ```
 drone-head/
 ├── backend/
-│   ├── server.js              # Main application (2500+ lines)
+│   ├── server.js              # Main application (~1,764 lines)
+│   ├── dataAccess.js          # Data access layer (~687 lines)
 │   ├── package.json           # Dependencies
 │   ├── Dockerfile             # Container configuration
 │   └── data/
 │       └── data.db            # SQLite database
 ├── frontend/
 │   ├── index.html             # Main dashboard
-│   ├── app.js                 # Main application (3200+ lines)
+│   ├── app.js                 # Main application (~4,192 lines)
 │   ├── style.css              # Main styles
-│   ├── auth.js                # Authentication logic
+│   ├── auth-client.js         # Authentication module (~234 lines)
 │   ├── auth.css               # Auth styles
 │   ├── profile.html           # User profile page
 │   ├── profile.js             # Profile logic
@@ -438,18 +466,21 @@ drone-head/
 | Category | Endpoints | Description |
 |----------|-----------|-------------|
 | Authentication | `/api/auth/*` | User registration, login, profile |
-| Drones | `/api/drones/*` | Drone CRUD, location updates |
+| Drones | `/api/drones/*` | Drone CRUD, location updates, simulation |
 | Hubs | `/api/hubs/*` | Hub management |
 | Fleets | `/api/hubs/:hubId/fleets` | Fleet management |
 | Missions | `/api/hubs/:hubId/missions` | Mission queue |
 | Ground Units | `/api/ground-units/*` | Ground unit CRUD, movement |
+| Radio Towers | `/api/ground-units/*` (is_radio_tower) | Radio tower operations |
 | Naval Units | `/api/naval-units/*` | Naval unit CRUD, movement |
 | Roads/Paths | `/api/roads/*`, `/api/walkable-paths/*` | Path network |
 | Zones/Areas | `/api/no-go-zones/*`, `/api/water-areas/*` | Geographic constraints |
+| AOIs | `/api/aois/*` | Areas of Interest |
+| EW Areas | `/api/ew-areas/*` | Electronic warfare areas |
 | Waypoints | `/api/waypoints/*` | Mission waypoints |
 | States | `/api/states/*` | Save/load application states |
 | Events | `/api/events` | SSE stream |
 
 ---
 
-*Last updated: 2024*
+*Last updated: 2026-04*

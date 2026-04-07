@@ -1,9 +1,35 @@
 /* ═══════════════════════════════════════════════════════════════
    Drone Command Center — frontend app (RTS Style)
+   With User Authentication
    ═══════════════════════════════════════════════════════════════ */
 
 const API_BASE = '/api';
-const SSE_URL  = `${API_BASE}/events`;
+
+// ─── Authentication Check ─────────────────────────────────────────────────────
+async function checkAuthentication() {
+  const isAuthenticated = await AuthClient.verifyToken();
+  
+  if (!isAuthenticated) {
+    window.location.href = '/login/login.html';
+    return false;
+  }
+  
+  return true;
+}
+
+// Wrap app initialization with auth check
+async function initApp() {
+  const authenticated = await checkAuthentication();
+  if (!authenticated) {
+    return; // Will redirect in checkAuthentication
+  }
+  
+  // Continue with normal app initialization
+  console.log('✅ User authenticated:', AuthClient.getDisplayName());
+  
+  // Establish SSE connection after authentication is confirmed
+  connect();
+}
 
 /* ── State ───────────────────────────────────────────────────── */
 const state = {
@@ -20,6 +46,14 @@ const state = {
   groundUnits:    {},     // id → ground unit
   groundMarkers:  {},     // id → Leaflet marker (ground units)
   groundPathLayers: {},   // id → Leaflet layer group for path visualization
+  
+  // Radio towers
+  radioTowers:        {},     // id → radio tower
+  radioRangeLayers:   {},     // id → Leaflet circle for radio range
+  radioTowerMarkers:  {},     // id → Leaflet marker for radio tower
+  
+  // Radio effects
+  activeRadioEffects: {},   // unitId → { towerId, effects }
   
   // Roads and paths
   roads:      {},   // id → road
@@ -92,11 +126,6 @@ const state = {
   placingNavalUnit: false, // naval unit placement mode
   selectedNavalUnitType: 'fast-boat', // current naval unit type for spawning
   movingNavalUnit: null, // naval unit being moved
-  
-  // Unit panel state
-  selectedUnitId: null, // currently selected unit (drone/ground/naval)
-  selectedUnitType: null, // 'drone', 'ground', or 'naval'
-  movingUnitId: null, // unit currently being moved
 };
 
 /* ── Map setup ───────────────────────────────────────────────── */
@@ -155,21 +184,33 @@ function hubIcon(hub) {
   });
 }
 
-function groundUnitIcon(unitType, status) {
+function groundUnitIcon(unitType, status, isRadioTower = false) {
   const icons = {
     humans: '👤',
     ifv:    '🛡️',
     tank:   '🪖',
-    truck:  '🚚'
+    truck:  '🚚',
+    'radio-tower': '📡'
   };
-  const icon = icons[unitType] || '🚚';
+  const icon = icons[unitType] || (isRadioTower ? '📡' : '🚚');
   const statusClass = status === 'moving' ? 'moving' : status === 'warning' ? 'warning' : 'idle';
+  const radioClass = isRadioTower ? ' radio-tower' : '';
   return L.divIcon({
     className: '',
-    html: `<div class="ground-unit-marker ground-unit-marker--${statusClass}">${icon}</div>`,
+    html: `<div class="ground-unit-marker ground-unit-marker--${statusClass}${radioClass}">${icon}</div>`,
     iconSize:   [32, 32],
     iconAnchor: [16, 16],
     popupAnchor:[0, -18],
+  });
+}
+
+function radioTowerIcon(active = true) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="radio-tower-marker ${active ? 'radio-tower--active' : 'radio-tower--inactive'}">📡</div>`,
+    iconSize:   [40, 40],
+    iconAnchor: [20, 20],
+    popupAnchor:[0, -20],
   });
 }
 
@@ -278,6 +319,147 @@ function removeGroundUnitMarker(id) {
   if (state.groundPathLayers[id]) {
     map.removeLayer(state.groundPathLayers[id]);
     delete state.groundPathLayers[id];
+  }
+}
+
+// ─── Radio Tower Functions ─────────────────────────────────────────────
+
+function upsertRadioTowerMarker(tower) {
+  const isActive = tower.radioActive !== 0;
+  
+  if (state.radioTowerMarkers[tower.id]) {
+    state.radioTowerMarkers[tower.id]
+      .setLatLng([tower.lat, tower.lng])
+      .setIcon(radioTowerIcon(isActive))
+      .setPopupContent(radioTowerPopupContent(tower));
+  } else {
+    const marker = L.marker([tower.lat, tower.lng], { icon: radioTowerIcon(isActive) })
+      .addTo(map).bindPopup(radioTowerPopupContent(tower));
+    marker.on('click', () => selectRadioTower(tower.id));
+    state.radioTowerMarkers[tower.id] = marker;
+  }
+  
+  // Update radio range circle
+  upsertRadioRangeCircle(tower);
+}
+
+function removeRadioTowerMarker(id) {
+  if (state.radioTowerMarkers[id]) {
+    map.removeLayer(state.radioTowerMarkers[id]);
+    delete state.radioTowerMarkers[id];
+  }
+  if (state.radioRangeLayers[id]) {
+    map.removeLayer(state.radioRangeLayers[id]);
+    delete state.radioRangeLayers[id];
+  }
+}
+
+function upsertRadioRangeCircle(tower) {
+  const rangeMeters = tower.radioRangeMeters || 500;
+  const isActive = tower.radioActive !== 0;
+  
+  if (state.radioRangeLayers[tower.id]) {
+    state.radioRangeLayers[tower.id].setLatLngs([tower.lat, tower.lng]);
+    state.radioRangeLayers[tower.id].setRadius(rangeMeters);
+    state.radioRangeLayers[tower.id].setStyle({
+      color: isActive ? '#00ff88' : '#666666',
+      fillColor: isActive ? 'rgba(0, 255, 136, 0.15)' : 'rgba(100, 100, 100, 0.1)',
+      fillOpacity: isActive ? 0.15 : 0.1,
+      weight: isActive ? 2 : 1,
+      dashArray: isActive ? '10, 10' : '5, 5'
+    });
+  } else {
+    const circle = L.circle([tower.lat, tower.lng], {
+      radius: rangeMeters,
+      color: isActive ? '#00ff88' : '#666666',
+      fillColor: isActive ? 'rgba(0, 255, 136, 0.15)' : 'rgba(100, 100, 100, 0.1)',
+      fillOpacity: isActive ? 0.15 : 0.1,
+      weight: isActive ? 2 : 1,
+      dashArray: isActive ? '10, 10' : '5, 5'
+    }).addTo(map);
+    
+    circle.bindTooltip(`${tower.name} - ${rangeMeters}m range`, { permanent: false });
+    state.radioRangeLayers[tower.id] = circle;
+  }
+}
+
+function radioTowerPopupContent(tower) {
+  const isActive = tower.radioActive !== 0;
+  const range = tower.radioRangeMeters || 500;
+  const effects = tower.radioEffects || {
+    drones: { speedBoost: 1.2, batteryEfficiency: 1.1 },
+    ground: { speedBoost: 1.15, accuracyBoost: 1.2 },
+    naval: { speedBoost: 1.1, commsRangeBoost: 1.3 },
+    radio: { rangeExtension: 1.5, powerBoost: 1.2 }
+  };
+  
+  return `
+    <strong>${tower.name}</strong> <small style="color:#8890b5">${tower.id}</small><br>
+    📡 Radio Tower<br>
+    📍 ${tower.lat.toFixed(5)}, ${tower.lng.toFixed(5)}<br>
+    📶 Range: <b>${range}m</b><br>
+    🟢 Status: <b>${isActive ? 'Active' : 'Inactive'}</b><br>
+    <hr style="margin:8px 0;border:none;border-top:1px solid #ddd"><br>
+    <button class="btn-xs btn-xs--primary" onclick="event.stopPropagation(); toggleRadioTower('${tower.id}');">
+      ${isActive ? '⏸ Deactivate' : '▶ Activate'}
+    </button>
+    <button class="btn-xs btn-xs--secondary" onclick="event.stopPropagation(); configureRadioTower('${tower.id}');">
+      ⚙️ Configure
+    </button>
+    <br><br>
+    <small><b>Effects:</b><br>
+    🚁 Drones: +${Math.round((effects.drones?.speedBoost || 1.2) * 100 - 100)}% speed<br>
+    🚗 Ground: +${Math.round((effects.ground?.speedBoost || 1.15) * 100 - 100)}% speed<br>
+    🚤 Naval: +${Math.round((effects.naval?.speedBoost || 1.1) * 100 - 100)}% speed<br>
+    📡 Radio: +${Math.round((effects.radio?.rangeExtension || 1.5) * 100 - 100)}% range</small>
+  `;
+}
+
+function selectRadioTower(id) {
+  state.selectedRadioTower = id;
+  const tower = state.radioTowers[id];
+  if (tower) {
+    map.flyTo([tower.lat, tower.lng], 16, { duration: 1 });
+    state.radioTowerMarkers[id]?.openPopup();
+  }
+  renderRadioTowerPanel();
+}
+
+function toggleRadioTower(towerId) {
+  fetch(`${API_BASE}/radio-towers/${towerId}/toggle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }).then(res => {
+    if (res.ok) {
+      showFeedback('Radio tower toggled', 'success');
+    }
+  });
+}
+
+function configureRadioTower(towerId) {
+  const tower = state.radioTowers[towerId];
+  if (!tower) return;
+  
+  const newRange = prompt('Enter radio range in meters (default 500):', tower.radioRangeMeters || 500);
+  if (newRange !== null) {
+    const range = parseInt(newRange) || 500;
+    fetch(`${API_BASE}/radio-towers/${towerId}/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ radioRangeMeters: range })
+    }).then(res => {
+      if (res.ok) {
+        showFeedback(`Radio range set to ${range}m`, 'success');
+      }
+    });
+  }
+}
+
+function renderRadioTowerPanel() {
+  // This could be expanded to show a dedicated panel for radio tower settings
+  const tower = state.radioTowers[state.selectedRadioTower];
+  if (tower) {
+    console.log('Selected radio tower:', tower);
   }
 }
 
@@ -503,9 +685,6 @@ function selectGroundUnit(id) {
   }
   renderGroundUnitList();
   renderGroundUnitSelectionPanel();
-  
-  // Open unit panel on the right
-  openUnitPanel(id, 'ground');
 }
 
 function enterGroundUnitMoveMode(unitId) {
@@ -737,9 +916,6 @@ function selectDrone(id) {
   }
   renderSidebar();
   renderSelectionPanel();
-  
-  // Open unit panel on the right
-  openUnitPanel(id, 'drone');
 }
 
 function renderSelectionPanel() {
@@ -891,399 +1067,6 @@ function switchAoiTab(name) {
 
 document.getElementById('aoi-panel-close').addEventListener('click', closeAoiPanel);
 
-/* ── Unit Panel (right drawer for drones, ground, naval units) ─ */
-const unitPanel = document.getElementById('unit-panel');
-const unitPanelTitle = document.getElementById('unit-panel-title');
-
-function openUnitPanel(unitId, unitType) {
-  state.selectedUnitId = unitId;
-  state.selectedUnitType = unitType;
-  
-  if (!unitPanel || !unitPanelTitle) return;
-  
-  // Hide hub and AOI panels
-  closeHubPanel();
-  closeAoiPanel();
-  
-  unitPanel.classList.remove('hidden');
-  
-  // Hide all detail sections first
-  document.getElementById('drone-details').classList.add('hidden');
-  document.getElementById('ground-details').classList.add('hidden');
-  document.getElementById('naval-details').classList.add('hidden');
-  
-  // Hide all action sections first
-  document.getElementById('drone-actions').classList.add('hidden');
-  document.getElementById('ground-actions').classList.add('hidden');
-  document.getElementById('naval-actions').classList.add('hidden');
-  
-  if (unitType === 'drone') {
-    const drone = state.drones[unitId];
-    if (!drone) { closeUnitPanel(); return; }
-    
-    unitPanelTitle.textContent = drone.name;
-    document.getElementById('drone-details').classList.remove('hidden');
-    document.getElementById('drone-actions').classList.remove('hidden');
-    
-    // Populate drone details
-    document.getElementById('drone-info-id').textContent = drone.id;
-    document.getElementById('drone-info-name').value = drone.name;
-    document.getElementById('drone-info-status').textContent = drone.status;
-    document.getElementById('drone-info-battery').textContent = drone.battery + '%';
-    document.getElementById('drone-info-altitude').textContent = drone.altitude + ' m';
-    document.getElementById('drone-info-speed').textContent = drone.speed + ' km/h';
-    document.getElementById('drone-info-coords').textContent = `${drone.lat.toFixed(4)}, ${drone.lng.toFixed(4)}`;
-    
-    // Hub and fleet assignment
-    const hubRow = document.getElementById('drone-info-hub-row');
-    const fleetRow = document.getElementById('drone-info-fleet-row');
-    
-    if (drone.hubId && state.hubs[drone.hubId]) {
-      hubRow.classList.remove('hidden');
-      document.getElementById('drone-info-hub').textContent = state.hubs[drone.hubId].name;
-    } else {
-      hubRow.classList.add('hidden');
-    }
-    
-    const fleet = Object.values(state.fleets).find(f => f.droneIds.includes(drone.id));
-    if (fleet) {
-      fleetRow.classList.remove('hidden');
-      document.getElementById('drone-info-fleet').textContent = fleet.name;
-    } else {
-      fleetRow.classList.add('hidden');
-    }
-    
-    // Show/hide simulation buttons
-    const simBtn = document.getElementById('btn-simulate-drone');
-    const stopSimBtn = document.getElementById('btn-stop-simulation');
-    if (state.simulatingDrone === unitId) {
-      simBtn.style.display = 'none';
-      stopSimBtn.style.display = 'inline-block';
-    } else {
-      simBtn.style.display = 'inline-block';
-      stopSimBtn.style.display = 'none';
-    }
-    
-    // Info tab
-    document.getElementById('unit-info-created').textContent = drone.createdAt ? new Date(drone.createdAt).toLocaleString() : '—';
-    document.getElementById('unit-info-updated').textContent = drone.updatedAt ? new Date(drone.updatedAt).toLocaleString() : '—';
-    
-  } else if (unitType === 'ground') {
-    const unit = state.groundUnits[unitId];
-    if (!unit) { closeUnitPanel(); return; }
-    
-    unitPanelTitle.textContent = unit.name;
-    document.getElementById('ground-details').classList.remove('hidden');
-    document.getElementById('ground-actions').classList.remove('hidden');
-    
-    // Populate ground unit details
-    document.getElementById('ground-info-id').textContent = unit.id;
-    document.getElementById('ground-info-name').value = unit.name;
-    document.getElementById('ground-info-type').textContent = unit.type;
-    document.getElementById('ground-info-status').textContent = unit.status;
-    document.getElementById('ground-info-battery').textContent = unit.battery + '%';
-    document.getElementById('ground-info-speed').textContent = unit.speed + ' km/h';
-    document.getElementById('ground-info-coords').textContent = `${unit.lat.toFixed(4)}, ${unit.lng.toFixed(4)}`;
-    document.getElementById('ground-info-road').textContent = unit.onRoad ? 'On Road' : 'Off Road';
-    
-    // Show/hide move buttons
-    const moveBtn = document.getElementById('btn-move-ground');
-    const cancelBtn = document.getElementById('btn-cancel-ground-move');
-    if (state.movingUnitId === unitId) {
-      moveBtn.style.display = 'none';
-      cancelBtn.style.display = 'inline-block';
-    } else {
-      moveBtn.style.display = 'inline-block';
-      cancelBtn.style.display = 'none';
-    }
-    
-    // Info tab
-    document.getElementById('unit-info-created').textContent = unit.createdAt ? new Date(unit.createdAt).toLocaleString() : '—';
-    document.getElementById('unit-info-updated').textContent = unit.updatedAt ? new Date(unit.updatedAt).toLocaleString() : '—';
-    
-  } else if (unitType === 'naval') {
-    const unit = state.navalUnits[unitId];
-    if (!unit) { closeUnitPanel(); return; }
-    
-    const typeInfo = getNavalUnitTypeInfo(unit.type);
-    unitPanelTitle.textContent = unit.name;
-    document.getElementById('naval-details').classList.remove('hidden');
-    document.getElementById('naval-actions').classList.remove('hidden');
-    
-    // Populate naval unit details
-    document.getElementById('naval-info-id').textContent = unit.id;
-    document.getElementById('naval-info-name').value = unit.name;
-    document.getElementById('naval-info-type').textContent = typeInfo.name;
-    document.getElementById('naval-info-status').textContent = unit.status;
-    document.getElementById('naval-info-battery').textContent = unit.battery + '%';
-    document.getElementById('naval-info-speed').textContent = unit.speed + ' km/h';
-    document.getElementById('naval-info-coords').textContent = `${unit.lat.toFixed(4)}, ${unit.lng.toFixed(4)}`;
-    
-    // Show/hide move buttons
-    const moveBtn = document.getElementById('btn-move-naval');
-    const cancelBtn = document.getElementById('btn-cancel-naval-move');
-    if (state.movingUnitId === unitId) {
-      moveBtn.style.display = 'none';
-      cancelBtn.style.display = 'inline-block';
-    } else {
-      moveBtn.style.display = 'inline-block';
-      cancelBtn.style.display = 'none';
-    }
-    
-    // Info tab
-    document.getElementById('unit-info-created').textContent = unit.createdAt ? new Date(unit.createdAt).toLocaleString() : '—';
-    document.getElementById('unit-info-updated').textContent = unit.updatedAt ? new Date(unit.updatedAt).toLocaleString() : '—';
-  }
-}
-
-function closeUnitPanel() {
-  if (unitPanel) unitPanel.classList.add('hidden');
-  state.selectedUnitId = null;
-  state.selectedUnitType = null;
-  state.movingUnitId = null;
-}
-
-function selectUnit(unitId, unitType) {
-  const unit = unitType === 'drone' ? state.drones[unitId] :
-               unitType === 'ground' ? state.groundUnits[unitId] :
-               state.navalUnits[unitId];
-  
-  if (!unit) return;
-  
-  // Fly to unit location
-  map.flyTo([unit.lat, unit.lng], 15, { duration: 1 });
-  
-  // Open unit panel
-  openUnitPanel(unitId, unitType);
-}
-
-// Unit panel close button
-if (unitPanel) {
-  unitPanel.querySelector('#unit-panel-close')?.addEventListener('click', closeUnitPanel);
-}
-
-// Unit panel tab switching
-document.querySelectorAll('#unit-panel .hub-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tabName = btn.dataset.tab;
-    document.querySelectorAll('#unit-panel .hub-tab').forEach(b => b.classList.toggle('active', b === btn));
-    document.querySelectorAll('#unit-panel .hub-tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-unit-${tabName}`));
-  });
-});
-
-/* ── Unit Panel Event Handlers ───────────────────────────────── */
-
-// Drone handlers
-document.getElementById('btn-rename-drone')?.addEventListener('click', async () => {
-  const newName = document.getElementById('drone-info-name').value.trim();
-  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'drone') return;
-  
-  const drone = state.drones[state.selectedUnitId];
-  if (drone) {
-    drone.name = newName;
-    // Update via API if needed
-    await fetch(`${API_BASE}/drones/${state.selectedUnitId}/location`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-    openUnitPanel(state.selectedUnitId, 'drone');
-    showFeedback('Drone renamed!', 'success');
-  }
-});
-
-document.getElementById('btn-simulate-drone')?.addEventListener('click', () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
-  enterSimulationMode(state.selectedUnitId);
-});
-
-document.getElementById('btn-stop-simulation')?.addEventListener('click', async () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
-  await stopSimulation(state.selectedUnitId);
-  exitSimulationMode();
-  openUnitPanel(state.selectedUnitId, 'drone');
-});
-
-// Ground unit handlers
-document.getElementById('btn-rename-ground')?.addEventListener('click', async () => {
-  const newName = document.getElementById('ground-info-name').value.trim();
-  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'ground') return;
-  
-  const unit = state.groundUnits[state.selectedUnitId];
-  if (unit) {
-    unit.name = newName;
-    await fetch(`${API_BASE}/ground-units/${state.selectedUnitId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-    openUnitPanel(state.selectedUnitId, 'ground');
-    showFeedback('Ground unit renamed!', 'success');
-  }
-});
-
-document.getElementById('btn-move-ground')?.addEventListener('click', () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'ground') return;
-  state.movingUnitId = state.selectedUnitId;
-  map.getContainer().style.cursor = 'crosshair';
-  placeBanner.innerHTML = `🎯 Click on map to set destination for ${state.groundUnits[state.selectedUnitId].name} — <button id="btn-cancel-place" class="btn-xs">Cancel</button>`;
-  placeBanner.classList.remove('hidden');
-});
-
-document.getElementById('btn-cancel-ground-move')?.addEventListener('click', () => {
-  state.movingUnitId = null;
-  map.getContainer().style.cursor = '';
-  if (placeBanner) placeBanner.classList.add('hidden');
-  openUnitPanel(state.selectedUnitId, 'ground');
-});
-
-// Naval unit handlers
-document.getElementById('btn-rename-naval')?.addEventListener('click', async () => {
-  const newName = document.getElementById('naval-info-name').value.trim();
-  if (!newName || !state.selectedUnitId || state.selectedUnitType !== 'naval') return;
-  
-  const unit = state.navalUnits[state.selectedUnitId];
-  if (unit) {
-    unit.name = newName;
-    await fetch(`${API_BASE}/naval-units/${state.selectedUnitId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-    openUnitPanel(state.selectedUnitId, 'naval');
-    showFeedback('Naval unit renamed!', 'success');
-  }
-});
-
-document.getElementById('btn-move-naval')?.addEventListener('click', () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'naval') return;
-  state.movingUnitId = state.selectedUnitId;
-  map.getContainer().style.cursor = 'crosshair';
-  placeBanner.innerHTML = `🚤 Click on water to set destination for ${state.navalUnits[state.selectedUnitId].name} — <button id="btn-cancel-place" class="btn-xs">Cancel</button>`;
-  placeBanner.classList.remove('hidden');
-});
-
-document.getElementById('btn-cancel-naval-move')?.addEventListener('click', () => {
-  state.movingUnitId = null;
-  map.getContainer().style.cursor = '';
-  if (placeBanner) placeBanner.classList.add('hidden');
-  openUnitPanel(state.selectedUnitId, 'naval');
-});
-
-// Delete unit handler
-document.getElementById('btn-delete-unit')?.addEventListener('click', async () => {
-  if (!state.selectedUnitId || !state.selectedUnitType) return;
-  
-  const unit = state.selectedUnitType === 'drone' ? state.drones[state.selectedUnitId] :
-               state.selectedUnitType === 'ground' ? state.groundUnits[state.selectedUnitId] :
-               state.navalUnits[state.selectedUnitId];
-  
-  if (!unit || !confirm(`Delete "${unit.name}"?`)) return;
-  
-  const endpoints = {
-    'drone': `${API_BASE}/drones/${state.selectedUnitId}`,
-    'ground': `${API_BASE}/ground-units/${state.selectedUnitId}`,
-    'naval': `${API_BASE}/naval-units/${state.selectedUnitId}`
-  };
-  
-  await fetch(endpoints[state.selectedUnitType], { method: 'DELETE' });
-  closeUnitPanel();
-  showFeedback('Unit deleted', 'success');
-});
-
-// Center on map handler
-document.getElementById('btn-center-unit-map')?.addEventListener('click', () => {
-  if (!state.selectedUnitId || !state.selectedUnitType) return;
-  
-  const unit = state.selectedUnitType === 'drone' ? state.drones[state.selectedUnitId] :
-               state.selectedUnitType === 'ground' ? state.groundUnits[state.selectedUnitId] :
-               state.navalUnits[state.selectedUnitId];
-  
-  if (unit) {
-    map.flyTo([unit.lat, unit.lng], 16, { duration: 1 });
-    showFeedback('Centered on unit', 'success');
-  }
-});
-
-// Action panel handlers for drone
-document.getElementById('action-drone-view')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
-    map.flyTo([state.drones[state.selectedUnitId].lat, state.drones[state.selectedUnitId].lng], 16);
-  }
-});
-
-document.getElementById('action-drone-patrol')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
-    enterSimulationMode(state.selectedUnitId);
-  }
-});
-
-document.getElementById('action-drone-surveillance')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
-    enterSimulationMode(state.selectedUnitId);
-  }
-});
-
-document.getElementById('action-drone-return')?.addEventListener('click', async () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'drone') return;
-  const d = state.drones[state.selectedUnitId];
-  let nearestHub = null;
-  let minDist = Infinity;
-  Object.values(state.hubs).forEach(h => {
-    const dist = Math.sqrt(Math.pow(h.lat - d.lat, 2) + Math.pow(h.lng - d.lng, 2));
-    if (dist < minDist) { minDist = dist; nearestHub = h; }
-  });
-  if (nearestHub) {
-    await startSimulation(state.selectedUnitId, nearestHub.lat, nearestHub.lng, 40);
-    showFeedback(`${d.name} returning to ${nearestHub.name}`, 'success');
-  }
-});
-
-document.getElementById('action-drone-emergency')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'drone') {
-    exitSimulationMode();
-    showFeedback('Emergency landing initiated', 'warning');
-  }
-});
-
-// Action panel handlers for ground
-document.getElementById('action-ground-view')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'ground') {
-    map.flyTo([state.groundUnits[state.selectedUnitId].lat, state.groundUnits[state.selectedUnitId].lng], 16);
-  }
-});
-
-document.getElementById('action-ground-move')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'ground') {
-    document.getElementById('btn-move-ground')?.click();
-  }
-});
-
-document.getElementById('action-ground-stop')?.addEventListener('click', async () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'ground') return;
-  await fetch(`${API_BASE}/ground-units/${state.selectedUnitId}/move`, { method: 'DELETE' });
-  showFeedback('Unit stopped', 'success');
-});
-
-// Action panel handlers for naval
-document.getElementById('action-naval-view')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'naval') {
-    map.flyTo([state.navalUnits[state.selectedUnitId].lat, state.navalUnits[state.selectedUnitId].lng], 16);
-  }
-});
-
-document.getElementById('action-naval-move')?.addEventListener('click', () => {
-  if (state.selectedUnitId && state.selectedUnitType === 'naval') {
-    document.getElementById('btn-move-naval')?.click();
-  }
-});
-
-document.getElementById('action-naval-stop')?.addEventListener('click', async () => {
-  if (!state.selectedUnitId || state.selectedUnitType !== 'naval') return;
-  await fetch(`${API_BASE}/naval-units/${state.selectedUnitId}/move`, { method: 'DELETE' });
-  showFeedback('Unit stopped', 'success');
-});
-
 /* ── AoI Panel Event Handlers ────────────────────────────────── */
 // Rename AoI
 document.getElementById('btn-rename-aoi').addEventListener('click', () => {
@@ -1417,14 +1200,9 @@ document.querySelectorAll('#aoi-panel .hub-tab').forEach(btn => {
 });
 
 /* ── Fleet and Mission rendering ─────────────────────────────── */
-function renderDroneList(hubId) {
-  const container = document.getElementById('drone-list-hub');
-  if (!container) return;
-  
+function renderDroneAssignment(container, hubId) {
   const hubDrones = Object.values(state.drones).filter(d => d.hubId === hubId);
   const unassignedDrones = Object.values(state.drones).filter(d => !d.hubId);
-  
-  container.innerHTML = '';
   
   const assignedSection = document.createElement('div');
   assignedSection.className = 'drone-section';
@@ -1502,6 +1280,82 @@ function renderDroneList(hubId) {
   container.querySelectorAll('.drone-assign').forEach(btn => {
     btn.addEventListener('click', async () => {
       await assignDroneToHub(btn.dataset.id, hubId);
+    });
+  });
+}
+
+function renderFleetList(hubId) {
+  const container = document.getElementById('hub-fleet-list');
+  if (!container) return;
+  
+  const hubFleets = Object.values(state.fleets).filter(f => f.hubId === hubId);
+  
+  // Clear existing content
+  container.innerHTML = '';
+  
+  // Create fleet list section
+  const section = document.createElement('div');
+  section.className = 'fleet-section';
+  
+  const header = document.createElement('div');
+  header.className = 'fleet-section-header';
+  header.innerHTML = `
+    <h4>🚢 Fleets</h4>
+    <button class="btn-sm btn-sm--primary" id="btn-create-fleet">Create Fleet</button>
+  `;
+  section.appendChild(header);
+  
+  const listContainer = document.createElement('div');
+  listContainer.className = 'fleet-list';
+  
+  if (!hubFleets.length) {
+    listContainer.innerHTML = '<p class="empty-hint">No fleets yet. Create one to group drones.</p>';
+  } else {
+    hubFleets.forEach(fleet => {
+      const droneCount = fleet.droneIds?.length || 0;
+      const card = document.createElement('div');
+      card.className = `fleet-card fleet-card--${fleet.status || 'idle'}`;
+      card.dataset.id = fleet.id;
+      
+      card.innerHTML = `
+        <div class="fleet-card-header">
+          <span class="fleet-card-name">${fleet.name}</span>
+          <span class="fleet-card-id">${fleet.id}</span>
+        </div>
+        <div class="fleet-card-stats">
+          <span>🚁 ${droneCount} drone${droneCount !== 1 ? 's' : ''}</span>
+          <span class="fleet-status">Status: ${fleet.status || 'idle'}</span>
+          ${fleet.currentMissionId ? `<span>📋 Mission: ${fleet.currentMissionId}</span>` : ''}
+        </div>
+        <div class="fleet-card-actions">
+          <button class="btn-xs btn-xs--danger fleet-delete" data-id="${fleet.id}" title="Delete fleet">Delete</button>
+        </div>
+      `;
+      listContainer.appendChild(card);
+    });
+  }
+  
+  section.appendChild(listContainer);
+  container.appendChild(section);
+  
+  // Create Fleet button handler
+  const createBtn = document.getElementById('btn-create-fleet');
+  if (createBtn) {
+    createBtn.addEventListener('click', () => {
+      const name = prompt('Enter fleet name:');
+      if (name?.trim()) {
+        createFleet(hubId, name.trim());
+      }
+    });
+  }
+  
+  // Delete fleet handlers
+  container.querySelectorAll('.fleet-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fleetId = btn.dataset.id;
+      if (confirm('Delete this fleet? Drones will remain assigned to the hub.')) {
+        await deleteFleet(hubId, fleetId);
+      }
     });
   });
 }
@@ -1617,10 +1471,9 @@ async function unassignDroneFromHub(droneId) {
 
 async function spawnDrone(lat, lng) {
   const droneCount = Object.keys(state.drones).length + 1;
-  const id = `drone-${droneCount}`;
   const name = `Drone ${droneCount}`;
   
-  const res = await fetch(`${API_BASE}/drones/${id}/location`, {
+  const res = await fetch(`${API_BASE}/drones`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, lat, lng, altitude: 100, speed: 0, battery: 100, status: 'idle' }),
@@ -1630,10 +1483,9 @@ async function spawnDrone(lat, lng) {
 
 async function spawnDroneAtLocation(lat, lng) {
   const droneCount = Object.keys(state.drones).length + 1;
-  const id = `drone-${droneCount}`;
   const name = `Drone ${droneCount}`;
   
-  const res = await fetch(`${API_BASE}/drones/${id}/location`, {
+  const res = await fetch(`${API_BASE}/drones`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, lat, lng, altitude: 100, speed: 0, battery: 100, status: 'idle' }),
@@ -1655,6 +1507,35 @@ async function spawnGroundUnit(lat, lng, type = 'truck') {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, type, lat, lng, battery: 100, status: 'idle' }),
+  });
+  return res.ok ? res.json() : null;
+}
+
+async function spawnRadioTower(lat, lng, name = null, ewRadius = 500) {
+  const unitCount = Object.keys(state.groundUnits).length + 1;
+  const id = `ground-${unitCount}`;
+  const towerName = name || `Radio Tower ${unitCount}`;
+  
+  const res = await fetch(`${API_BASE}/ground-units`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      name: towerName, 
+      type: 'radio-tower', 
+      lat, 
+      lng, 
+      battery: 100, 
+      status: 'idle',
+      isRadioTower: true,
+      radioRangeMeters: ewRadius,
+      radioEffects: {
+        drones: { speedBoost: 1.2, batteryEfficiency: 1.1 },
+        ground: { speedBoost: 1.15, accuracyBoost: 1.2 },
+        naval: { speedBoost: 1.1, commsRangeBoost: 1.3 },
+        radio: { rangeExtension: 1.5, powerBoost: 1.2 }
+      },
+      radioActive: true
+    }),
   });
   return res.ok ? res.json() : null;
 }
@@ -1714,9 +1595,6 @@ function selectNavalUnit(id) {
   }
   renderNavalUnitList();
   renderNavalUnitSelectionPanel();
-  
-  // Open unit panel on the right
-  openUnitPanel(id, 'naval');
 }
 
 function enterNavalUnitMoveMode(unitId) {
@@ -1901,6 +1779,7 @@ const ACTION_ICONS = {
   'spawn-drone': { icon: '🚁', label: 'Spawn Drone' },
   'place-hub': { icon: '🏠', label: 'Place Hub' },
   'spawn-ground': { icon: '🚗', label: 'Spawn Ground Unit' },
+  'spawn-radio': { icon: '📡', label: 'Spawn Radio Tower' },
   'set-waypoint': { icon: '🎯', label: 'Set Waypoint' },
   'surveillance': { icon: '👁', label: 'Surveillance' },
   'return-base': { icon: '🔄', label: 'Return to Base' },
@@ -2257,6 +2136,12 @@ function applyGroundUnitRemove(id) {
   renderGroundUnitSelectionPanel();
 }
 
+// Radio tower handlers
+function applyRadioTowerUpdate(tower) {
+  state.radioTowers[tower.id] = tower;
+  upsertRadioTowerMarker(tower);
+}
+
 // Road and path handlers
 function applyRoadUpdate(road) {
   state.roads[road.id] = road;
@@ -2307,68 +2192,134 @@ function applyWaterAreaRemove(id) {
   }
 }
 
+// Global reference to SSE connection for debugging and management
+let eventSource = null;
+
 function connect() {
   badge.textContent = 'Connecting…';
   badge.className = 'badge badge--connecting';
   
-  const es = new EventSource(SSE_URL);
-  
-  es.onopen = () => {
-    badge.textContent = '● Live';
-    badge.className = 'badge badge--live';
-  };
-  
-  es.onmessage = e => {
-    const msg = JSON.parse(e.data);
-    
-    switch (msg.type) {
-      case 'snapshot':
-        msg.drones?.forEach(applyUpdate);
-        msg.hubs?.forEach(applyHubUpdate);
-        msg.fleets?.forEach(applyFleetUpdate);
-        msg.missions?.forEach(applyMissionUpdate);
-        msg.groundUnits?.forEach(applyGroundUnitUpdate);
-        msg.roads?.forEach(applyRoadUpdate);
-        msg.paths?.forEach(applyPathUpdate);
-        msg.navalUnits?.forEach(applyNavalUnitUpdate);
-        msg.waterAreas?.forEach(applyWaterAreaUpdate);
-        if (msg.noGoZones) msg.noGoZones.forEach(applyNoGoZoneUpdate);
-        updateHUDStats();
-        break;
-      case 'update': applyUpdate(msg.drone); break;
-      case 'navalunit:update': applyNavalUnitUpdate(msg.unit); break;
-      case 'navalunit:remove': applyNavalUnitRemove(msg.id); break;
-      case 'waterarea:update': applyWaterAreaUpdate(msg.area); break;
-      case 'waterarea:remove': applyWaterAreaRemove(msg.id); break;
-      case 'remove': applyRemove(msg.id); break;
-      case 'hub:update': applyHubUpdate(msg.hub); break;
-      case 'hub:remove': applyHubRemove(msg.id); break;
-      case 'fleet:update': applyFleetUpdate(msg.fleet); break;
-      case 'fleet:remove': applyFleetRemove(msg.id); break;
-      case 'mission:update': applyMissionUpdate(msg.mission); break;
-      case 'mission:remove': applyMissionRemove(msg.id); break;
-      case 'groundunit:update': applyGroundUnitUpdate(msg.unit); break;
-      case 'groundunit:remove': applyGroundUnitRemove(msg.id); break;
-      case 'road:update': applyRoadUpdate(msg.road); break;
-      case 'road:remove': applyRoadRemove(msg.id); break;
-      case 'path:update': applyPathUpdate(msg.path); break;
-      case 'path:remove': applyPathRemove(msg.id); break;
-      case 'nogozone:update': applyNoGoZoneUpdate(msg.zone); break;
-      case 'nogozone:remove': applyNoGoZoneRemove(msg.id); break;
-      case 'simulation:blocked': handleSimulationBlocked(msg); break;
-      case 'mission:notification': handleMissionNotification(msg); break;
-    }
-  };
-  
-  es.onerror = () => {
-    badge.textContent = '✕ Offline';
+  // Construct SSE URL with token at connection time (not at module load)
+  const token = AuthClient.token;
+  if (!token) {
+    console.error('[SSE] No authentication token available');
+    badge.textContent = '✕ Auth Required';
     badge.className = 'badge badge--error';
-    es.close();
     setTimeout(connect, 5000);
-  };
+    return;
+  }
+  
+  // Verify token is still valid by checking with server
+  fetch('/api/auth/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  .then(res => {
+    if (!res.ok) {
+      console.error('[SSE] Token validation failed, status:', res.status);
+      badge.textContent = '✕ Auth Failed';
+      badge.className = 'badge badge--error';
+      // Clear invalid token and redirect to login
+      AuthClient.logout();
+      setTimeout(() => {
+        window.location.href = '/login/login.html';
+      }, 2000);
+      return false;
+    }
+    return true;
+  })
+  .then(valid => {
+    if (!valid) return;
+    
+    const sseUrl = `${API_BASE}/events?token=${token}`;
+    console.log('[SSE] Connecting to:', sseUrl);
+    
+    // Close any existing connection first
+    if (eventSource) {
+      eventSource.close();
+    }
+    
+    eventSource = new EventSource(sseUrl);
+    
+    // Set up connection timeout
+    const connectionTimeout = setTimeout(() => {
+      if (badge.classList.contains('badge--connecting')) {
+        console.error('[SSE] Connection timeout after 10 seconds');
+        badge.textContent = '✕ Timeout';
+        badge.className = 'badge badge--error';
+        eventSource.close();
+        setTimeout(connect, 5000);
+      }
+    }, 10000);
+    
+    eventSource.onopen = () => {
+      console.log('[SSE] Connection opened successfully');
+      clearTimeout(connectionTimeout);
+      badge.textContent = '● Live';
+      badge.className = 'badge badge--live';
+    };
+    
+    eventSource.onmessage = e => {
+      const msg = JSON.parse(e.data);
+      
+      switch (msg.type) {
+        case 'snapshot':
+          console.log('[SSE] Received snapshot with', msg.drones?.length || 0, 'drones');
+          msg.drones?.forEach(applyUpdate);
+          msg.hubs?.forEach(applyHubUpdate);
+          msg.fleets?.forEach(applyFleetUpdate);
+          msg.missions?.forEach(applyMissionUpdate);
+          msg.groundUnits?.forEach(applyGroundUnitUpdate);
+          msg.roads?.forEach(applyRoadUpdate);
+          msg.paths?.forEach(applyPathUpdate);
+          msg.navalUnits?.forEach(applyNavalUnitUpdate);
+          msg.waterAreas?.forEach(applyWaterAreaUpdate);
+          if (msg.noGoZones) msg.noGoZones.forEach(applyNoGoZoneUpdate);
+          updateHUDStats();
+          break;
+        case 'update': applyUpdate(msg.drone); break;
+        case 'navalunit:update': applyNavalUnitUpdate(msg.unit); break;
+        case 'navalunit:remove': applyNavalUnitRemove(msg.id); break;
+        case 'waterarea:update': applyWaterAreaUpdate(msg.area); break;
+        case 'waterarea:remove': applyWaterAreaRemove(msg.id); break;
+        case 'remove': applyRemove(msg.id); break;
+        case 'hub:update': applyHubUpdate(msg.hub); break;
+        case 'hub:remove': applyHubRemove(msg.id); break;
+        case 'fleet:update': applyFleetUpdate(msg.fleet); break;
+        case 'fleet:remove': applyFleetRemove(msg.id); break;
+        case 'mission:update': applyMissionUpdate(msg.mission); break;
+        case 'mission:remove': applyMissionRemove(msg.id); break;
+        case 'groundunit:update': applyGroundUnitUpdate(msg.unit); break;
+        case 'groundunit:remove': applyGroundUnitRemove(msg.id); break;
+        case 'road:update': applyRoadUpdate(msg.road); break;
+        case 'road:remove': applyRoadRemove(msg.id); break;
+        case 'path:update': applyPathUpdate(msg.path); break;
+        case 'path:remove': applyPathRemove(msg.id); break;
+        case 'nogozone:update': applyNoGoZoneUpdate(msg.zone); break;
+        case 'nogozone:remove': applyNoGoZoneRemove(msg.id); break;
+        case 'radio:update': applyRadioTowerUpdate(msg.tower); break;
+        case 'simulation:blocked': handleSimulationBlocked(msg); break;
+        case 'mission:notification': handleMissionNotification(msg); break;
+      }
+    };
+    
+    eventSource.onerror = (err) => {
+      console.error('[SSE] Connection error:', err);
+      badge.textContent = '✕ Offline';
+      badge.className = 'badge badge--error';
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      setTimeout(connect, 5000);
+    };
+  })
+  .catch(err => {
+    console.error('[SSE] Token validation error:', err);
+    badge.textContent = '✕ Error';
+    badge.className = 'badge badge--error';
+    setTimeout(connect, 5000);
+  });
 }
-
-connect();
 
 /* ── Entity Context Menu ─────────────────────────────────────── */
 const entityContextMenu = document.getElementById('entity-context-menu');
@@ -2516,6 +2467,8 @@ function showMissionToast(mission, priority = 'medium') {
 
   const toast = document.createElement('div');
   toast.className = `mission-toast mission-toast--${priority}`;
+  toast.dataset.missionId = mission.id;
+  toast.dataset.hubId = mission.hubId;
   
   // Icon based on mission type
   const typeIcons = {
@@ -2540,9 +2493,20 @@ function showMissionToast(mission, priority = 'medium') {
       <strong>${mission.title}</strong>
       <br><small>${mission.type.charAt(0).toUpperCase() + mission.type.slice(1)} mission assigned</small>
     </span>
-    <button class="mission-toast-close" title="Close">✕</button>
+    <div class="mission-toast-actions">
+      <button class="mission-toast-action mission-toast-action--act" title="Act upon this mission">
+        ⚡ Act upon
+      </button>
+      <button class="mission-toast-close" title="Close">✕</button>
+    </div>
     <div class="mission-toast-progress"></div>
   `;
+  
+  // "Act upon" button handler
+  const actBtn = toast.querySelector('.mission-toast-action--act');
+  actBtn.addEventListener('click', () => {
+    acknowledgeMissionToast(toast, mission);
+  });
   
   // Close button handler
   const closeBtn = toast.querySelector('.mission-toast-close');
@@ -2557,6 +2521,31 @@ function showMissionToast(mission, priority = 'medium') {
     setTimeout(() => {
       if (toast.parentNode) closeMissionToast(toast);
     }, 5000);
+  }
+}
+
+// Handle mission acknowledgment (Act upon button)
+function acknowledgeMissionToast(toast, mission) {
+  // Close the toast
+  closeMissionToast(toast);
+  
+  // Switch to the hub's panel
+  if (mission.hubId && state.hubs[mission.hubId]) {
+    state.activeHubId = mission.hubId;
+    
+    // Switch to missions tab
+    const missionsTabBtn = document.querySelector('.tab-btn[data-tab="missions"]');
+    if (missionsTabBtn) {
+      missionsTabBtn.click();
+    }
+    
+    // Re-render the hub panel to show missions
+    renderHubPanel();
+    
+    // Show feedback
+    showFeedback(`Opening mission: ${mission.title}`, 'success');
+  } else {
+    showFeedback('Mission hub not found', 'warning');
   }
 }
 
@@ -2670,6 +2659,12 @@ map.off('click');
 map.on('click', async (e) => {
   const { lat, lng } = e.latlng;
   
+  // Check if click was on an AOI polygon - if so, skip map click handling
+  // The polygon's click handler will handle the selection
+  if (e.target && e.target instanceof L.Polygon) {
+    return;
+  }
+  
   if (state.drawingEwArea) {
     completeEwAreaDrawing(lat, lng);
     return;
@@ -2733,6 +2728,13 @@ map.on('click', async (e) => {
       case 'spawn-ground':
         const unit = await spawnGroundUnit(lat, lng, 'truck');
         if (unit) showFeedback('Ground unit spawned!', 'success');
+        selectAction(action);
+        break;
+      case 'spawn-radio':
+        const ewRadiusInput = prompt('Enter EW radius in meters (default 500):', '500');
+        const ewRadius = parseInt(ewRadiusInput) || 500;
+        const radioTower = await spawnRadioTower(lat, lng, null, ewRadius);
+        if (radioTower) showFeedback(`Radio Tower spawned with ${ewRadius}m EW radius!`, 'success');
         selectAction(action);
         break;
       case 'set-waypoint':
@@ -3795,12 +3797,6 @@ document.querySelectorAll('.selection-action-btn').forEach(btn => {
   });
 });
 
-document.getElementById('mission-quick-add').addEventListener('click', () => {
-  if (!state.activeHubId) { alert('Please select a hub first to add a mission.'); return; }
-  document.getElementById('btn-add-mission').click();
-  switchTab('missions');
-});
-
 /* ── EW Selection Panel Buttons ───────────────────────────────── */
 const btnEditEwRuleset = document.getElementById('btn-edit-ew-ruleset');
 const btnCenterEwMap = document.getElementById('btn-center-ew-map');
@@ -4057,14 +4053,117 @@ map.on('contextmenu', (e) => {
   showMapContextMenu(e.latlng, containerPoint);
 });
 
-// Map context menu close button
-if (mapContextClose) {
-  mapContextClose.addEventListener('click', hideMapContextMenu);
+// ─── Submenu Functions ────────────────────────────────────────────────────────
+
+/**
+ * Hide all unit type submenus
+ */
+function hideAllSubmenus() {
+  document.querySelectorAll('.context-submenu').forEach(submenu => {
+    submenu.classList.add('hidden');
+  });
 }
 
-// Map context menu action handlers
+/**
+ * Show a specific submenu
+ * @param {string} submenuId - The ID of the submenu to show
+ */
+function showSubmenu(submenuId) {
+  hideAllSubmenus();
+  const submenu = document.getElementById(submenuId);
+  if (submenu) {
+    submenu.classList.remove('hidden');
+  }
+}
+
+/**
+ * Spawn a unit based on submenu selection
+ * @param {string} unitType - The type of unit to spawn
+ * @param {string} category - The category (air-units, ground-units, naval-units)
+ */
+async function spawnUnitFromSubmenu(unitType, category) {
+  if (!mapContextLatLng) return null;
+  const { lat, lng } = mapContextLatLng;
+  
+  try {
+    switch (category) {
+      case 'air-units':
+        const drone = await spawnDroneAtLocation(lat, lng);
+        if (drone) {
+          showFeedback('Drone spawned!', 'success');
+        }
+        return drone;
+      
+      case 'ground-units':
+        const gUnit = await spawnGroundUnit(lat, lng, unitType);
+        if (gUnit) {
+          showFeedback(`Ground unit (${unitType}) spawned!`, 'success');
+        }
+        return gUnit;
+      
+      case 'naval-units':
+        const nUnit = await spawnNavalUnit(lat, lng, unitType);
+        if (nUnit) {
+          showFeedback(`Naval unit (${unitType}) spawned!`, 'success');
+        }
+        return nUnit;
+      
+      default:
+        return null;
+    }
+  } catch (error) {
+    console.error('Error spawning unit:', error);
+    showFeedback('Failed to spawn unit', 'error');
+    return null;
+  }
+}
+
+// Map context menu close button
+if (mapContextClose) {
+  mapContextClose.addEventListener('click', () => {
+    hideAllSubmenus();
+    hideMapContextMenu();
+  });
+}
+
+// Setup submenu hover handlers for parent menu items
 if (mapContextMenu) {
-  mapContextMenu.querySelectorAll('.context-option[data-map-action]').forEach(btn => {
+  // Handle hover over submenu parent items
+  mapContextMenu.querySelectorAll('.context-option--has-submenu').forEach(btn => {
+    btn.addEventListener('mouseenter', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.mapAction;
+      if (action) {
+        showSubmenu(`submenu-${action}`);
+      }
+    });
+    
+    // Prevent click from triggering on parent items
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
+  });
+  
+  // Setup submenu item click handlers
+  document.querySelectorAll('.context-submenu-item').forEach(item => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const unitType = item.dataset.unitType;
+      const submenu = item.closest('.context-submenu');
+      const category = submenu?.id.replace('submenu-', '');
+      
+      if (category && unitType) {
+        await spawnUnitFromSubmenu(unitType, category);
+      }
+      
+      hideAllSubmenus();
+      hideMapContextMenu();
+    });
+  });
+  
+  // Setup regular context menu action handlers (non-submenu items)
+  mapContextMenu.querySelectorAll('.context-option[data-map-action]:not(.context-option--has-submenu)').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!mapContextLatLng) return;
@@ -4072,21 +4171,9 @@ if (mapContextMenu) {
       const { lat, lng } = mapContextLatLng;
       
       switch (action) {
-        case 'spawn-drone':
-          const drone = await spawnDroneAtLocation(lat, lng);
-          if (drone) showFeedback('Drone spawned!', 'success');
-          break;
         case 'place-hub':
           const hub = await createHub(lat, lng);
           if (hub) showFeedback('Hub placed!', 'success');
-          break;
-        case 'spawn-ground':
-          const gUnit = await spawnGroundUnit(lat, lng, 'truck');
-          if (gUnit) showFeedback('Ground unit spawned!', 'success');
-          break;
-        case 'spawn-naval':
-          const nUnit = await spawnNavalUnit(lat, lng, 'fast-boat');
-          if (nUnit) showFeedback('Naval unit spawned!', 'success');
           break;
         case 'draw-area':
           enterDrawingMode();
@@ -4100,21 +4187,50 @@ if (mapContextMenu) {
           });
           break;
       }
+      hideAllSubmenus();
       hideMapContextMenu();
     });
   });
 }
 
-// Close map context menu on click elsewhere or Escape
+// Close map context menu and submenus on click elsewhere
 document.addEventListener('click', (e) => {
-  if (mapContextMenu && !mapContextMenu.contains(e.target)) hideMapContextMenu();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && mapContextMenu && !mapContextMenu.classList.contains('hidden')) {
+  if (mapContextMenu && !mapContextMenu.contains(e.target)) {
+    hideAllSubmenus();
     hideMapContextMenu();
   }
 });
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (mapContextMenu && !mapContextMenu.classList.contains('hidden')) {
+      hideAllSubmenus();
+      hideMapContextMenu();
+    }
+  }
+});
+
+// Close submenus when mouse leaves the context menu area
+if (mapContextMenu) {
+  mapContextMenu.addEventListener('mouseleave', (e) => {
+    // Only hide submenus if we're not hovering over a submenu itself
+    if (!e.relatedTarget || !e.relatedTarget.closest('.context-submenu')) {
+      hideAllSubmenus();
+    }
+  });
+  
+  // Keep submenus open when hovering over them
+  document.querySelectorAll('.context-submenu').forEach(submenu => {
+    submenu.addEventListener('mouseenter', () => {
+      submenu.classList.remove('hidden');
+    });
+    
+    submenu.addEventListener('mouseleave', () => {
+      // Don't immediately hide - let hover over parent keep it open
+    });
+  });
+}
 
 /* ── Initialization ──────────────────────────────────────────── */
 loadAoIs();
@@ -4363,4 +4479,12 @@ if (searchInput) {
       searchInput.focus();
     }
   });
+}
+
+/* ── App Initialization ─────────────────────────────────────────── */
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }

@@ -1,11 +1,12 @@
 {
   "name": "drone-location-backend",
-  "version": "1.0.0",
-  "description": "Backend for drone location tracking app",
+  "version": "2.0.0",
+  "description": "Backend for drone location tracking app - User-scoped with authentication",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "migrate": "node migrate.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

@@ -472,3 +472,7 @@ curl -X POST http://localhost:3000/api/drones/test/location \
 5. **Round-Robin**: Fleet assignment uses round-robin for even distribution
 6. **No-Go Zones**: All movement types respect no-go zones
 7. **Water Areas**: Naval units can only exist on water areas
+
+
+## If user cant connect to application 
+use 'docker compose' to run docker compose commands

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drone Command Center</title>
 
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -242,40 +245,45 @@
           <div class="action-icon__label">Ground</div>
           <div class="action-icon__hotkey">3</div>
         </div>
+        <div class="action-icon" data-action="spawn-radio" title="Spawn Radio Tower">
+          <div class="action-icon__icon">📡</div>
+          <div class="action-icon__label">Radio</div>
+          <div class="action-icon__hotkey">4</div>
+        </div>
         <div class="action-icon" data-action="set-waypoint" title="Set Waypoint">
           <div class="action-icon__icon">🎯</div>
           <div class="action-icon__label">Waypoint</div>
-          <div class="action-icon__hotkey">4</div>
+          <div class="action-icon__hotkey">5</div>
         </div>
         <div class="action-icon" data-action="surveillance" title="Surveillance Mode">
           <div class="action-icon__icon">👁</div>
           <div class="action-icon__label">Scout</div>
-          <div class="action-icon__hotkey">5</div>
+          <div class="action-icon__hotkey">6</div>
         </div>
         <div class="action-icon" data-action="return-base" title="Return to Base">
           <div class="action-icon__icon">🔄</div>
           <div class="action-icon__label">Return</div>
-          <div class="action-icon__hotkey">6</div>
+          <div class="action-icon__hotkey">7</div>
         </div>
         <div class="action-icon" data-action="emergency" title="Emergency Landing">
           <div class="action-icon__icon">⚠️</div>
           <div class="action-icon__label">Emergency</div>
-          <div class="action-icon__hotkey">7</div>
+          <div class="action-icon__hotkey">8</div>
         </div>
         <div class="action-icon" data-action="draw-area" title="Draw Area of Interest">
           <div class="action-icon__icon">🔷</div>
           <div class="action-icon__label">Draw Area</div>
-          <div class="action-icon__hotkey">8</div>
+          <div class="action-icon__hotkey">9</div>
         </div>
         <div class="action-icon" data-action="show-roads" title="Show Roads">
           <div class="action-icon__icon">🛣️</div>
           <div class="action-icon__label">Roads</div>
-          <div class="action-icon__hotkey">9</div>
+          <div class="action-icon__hotkey">0</div>
         </div>
         <div class="action-icon" data-action="highlight-road" title="Highlight Road">
           <div class="action-icon__icon">🎨</div>
           <div class="action-icon__label">Highlight</div>
-          <div class="action-icon__hotkey">0</div>
+          <div class="action-icon__hotkey">-</div>
         </div>
       </div>
 
@@ -422,13 +430,6 @@
         </div>
       </div>
 
-      <!-- Mission Quick Actions -->
-      <div id="mission-actions">
-        <button class="mission-btn" id="mission-quick-add" title="Quick Add Mission">
-          <span class="mission-btn__icon">+</span>
-          <span class="mission-btn__label">Mission</span>
-        </button>
-      </div>
     </div>
 
     <!-- ── Hub Panel (right drawer) ─────────────────────────────────────────── -->
@@ -557,229 +558,74 @@
       </div>
     </div>
 
-    <!-- ── Unit Detail Panel (right drawer) ──────────────────────────────────── -->
-    <div id="unit-panel" class="hub-panel hidden">
+    <!-- ── AoI Panel (right drawer) ─────────────────────────────────────────── -->
+    <div id="aoi-panel" class="hub-panel hidden">
       <div class="hub-panel__header">
-        <span id="unit-panel-title">Unit</span>
-        <button id="unit-panel-close" class="btn-icon-sm" title="Close">✕</button>
+        <span id="aoi-panel-title">Area of Interest</span>
+        <button id="aoi-panel-close" class="btn-icon-sm" title="Close">✕</button>
       </div>
 
       <!-- Tabs -->
       <div class="hub-tabs">
         <button class="hub-tab active" data-tab="details">Details</button>
-        <button class="hub-tab" data-tab="actions">Actions</button>
-        <button class="hub-tab" data-tab="info">Info</button>
+        <button class="hub-tab" data-tab="ruleset">Ruleset</button>
       </div>
 
       <!-- ── Tab: Details ── -->
-      <div class="hub-tab-content active" id="tab-unit-details">
-        <!-- Drone-specific details -->
-        <div id="drone-details" class="unit-details hidden">
-          <div class="info-block">
-            <div class="info-label">Drone ID</div>
-            <div id="drone-info-id" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Name</div>
-            <div class="info-value" style="display:flex;gap:6px;align-items:center">
-              <input type="text" id="drone-info-name" class="info-input" />
-              <button id="btn-rename-drone" class="btn-xs btn-xs--accent">Save</button>
-            </div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Status</div>
-            <div id="drone-info-status" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Battery</div>
-            <div id="drone-info-battery" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Altitude</div>
-            <div id="drone-info-altitude" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Speed</div>
-            <div id="drone-info-speed" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Position</div>
-            <div id="drone-info-coords" class="info-value">—</div>
-          </div>
-          <div class="info-block" id="drone-info-hub-row">
-            <div class="info-label">Assigned Hub</div>
-            <div id="drone-info-hub" class="info-value">—</div>
-          </div>
-          <div class="info-block" id="drone-info-fleet-row">
-            <div class="info-label">Assigned Fleet</div>
-            <div id="drone-info-fleet" class="info-value">—</div>
-          </div>
-          <hr class="info-divider" />
-          <button id="btn-simulate-drone" class="btn-xs btn-xs--accent">🛫 Simulate Flight</button>
-          <button id="btn-stop-simulation" class="btn-xs" style="display:none">⏹ Stop Simulation</button>
-        </div>
-
-        <!-- Ground unit-specific details -->
-        <div id="ground-details" class="unit-details hidden">
-          <div class="info-block">
-            <div class="info-label">Unit ID</div>
-            <div id="ground-info-id" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Name</div>
-            <div class="info-value" style="display:flex;gap:6px;align-items:center">
-              <input type="text" id="ground-info-name" class="info-input" />
-              <button id="btn-rename-ground" class="btn-xs btn-xs--accent">Save</button>
-            </div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Type</div>
-            <div id="ground-info-type" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Status</div>
-            <div id="ground-info-status" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Battery</div>
-            <div id="ground-info-battery" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Speed</div>
-            <div id="ground-info-speed" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Position</div>
-            <div id="ground-info-coords" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Road Status</div>
-            <div id="ground-info-road" class="info-value">—</div>
-          </div>
-          <hr class="info-divider" />
-          <button id="btn-move-ground" class="btn-xs btn-xs--accent">🎯 Move Unit</button>
-          <button id="btn-cancel-ground-move" class="btn-xs" style="display:none">✕ Cancel</button>
-        </div>
-
-        <!-- Naval unit-specific details -->
-        <div id="naval-details" class="unit-details hidden">
-          <div class="info-block">
-            <div class="info-label">Unit ID</div>
-            <div id="naval-info-id" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Name</div>
-            <div class="info-value" style="display:flex;gap:6px;align-items:center">
-              <input type="text" id="naval-info-name" class="info-input" />
-              <button id="btn-rename-naval" class="btn-xs btn-xs--accent">Save</button>
-            </div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Type</div>
-            <div id="naval-info-type" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Status</div>
-            <div id="naval-info-status" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Battery</div>
-            <div id="naval-info-battery" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Speed</div>
-            <div id="naval-info-speed" class="info-value">—</div>
-          </div>
-          <div class="info-block">
-            <div class="info-label">Position</div>
-            <div id="naval-info-coords" class="info-value">—</div>
-          </div>
-          <hr class="info-divider" />
-          <button id="btn-move-naval" class="btn-xs btn-xs--accent">🎯 Move Unit</button>
-          <button id="btn-cancel-naval-move" class="btn-xs" style="display:none">✕ Cancel</button>
-        </div>
-      </div>
-
-      <!-- ── Tab: Actions ── -->
-      <div class="hub-tab-content" id="tab-unit-actions">
-        <div class="panel-section-title">Quick Actions</div>
-        
-        <!-- Drone actions -->
-        <div id="drone-actions" class="unit-actions hidden">
-          <div class="action-grid">
-            <button id="action-drone-view" class="action-card">
-              <span class="action-card__icon">👁</span>
-              <span class="action-card__label">Center on Map</span>
-            </button>
-            <button id="action-drone-patrol" class="action-card">
-              <span class="action-card__icon">🔄</span>
-              <span class="action-card__label">Patrol</span>
-            </button>
-            <button id="action-drone-surveillance" class="action-card">
-              <span class="action-card__icon">👁</span>
-              <span class="action-card__label">Surveillance</span>
-            </button>
-            <button id="action-drone-return" class="action-card">
-              <span class="action-card__icon">🔄</span>
-              <span class="action-card__label">Return to Hub</span>
-            </button>
-            <button id="action-drone-emergency" class="action-card">
-              <span class="action-card__icon">⚠️</span>
-              <span class="action-card__label">Emergency Land</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Ground unit actions -->
-        <div id="ground-actions" class="unit-actions hidden">
-          <div class="action-grid">
-            <button id="action-ground-view" class="action-card">
-              <span class="action-card__icon">👁</span>
-              <span class="action-card__label">Center on Map</span>
-            </button>
-            <button id="action-ground-move" class="action-card">
-              <span class="action-card__icon">🎯</span>
-              <span class="action-card__label">Move to Location</span>
-            </button>
-            <button id="action-ground-stop" class="action-card">
-              <span class="action-card__icon">⏹</span>
-              <span class="action-card__label">Stop Movement</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Naval unit actions -->
-        <div id="naval-actions" class="unit-actions hidden">
-          <div class="action-grid">
-            <button id="action-naval-view" class="action-card">
-              <span class="action-card__icon">👁</span>
-              <span class="action-card__label">Center on Map</span>
-            </button>
-            <button id="action-naval-move" class="action-card">
-              <span class="action-card__icon">🎯</span>
-              <span class="action-card__label">Move to Location</span>
-            </button>
-            <button id="action-naval-stop" class="action-card">
-              <span class="action-card__icon">⏹</span>
-              <span class="action-card__label">Stop Movement</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Tab: Info ── -->
-      <div class="hub-tab-content" id="tab-unit-info">
+      <div class="hub-tab-content active" id="tab-aoi-details">
         <div class="info-block">
-          <div class="info-label">Created</div>
-          <div id="unit-info-created" class="info-value">—</div>
+          <div class="info-label">Area ID</div>
+          <div id="aoi-info-id" class="info-value">—</div>
         </div>
         <div class="info-block">
-          <div class="info-label">Last Update</div>
-          <div id="unit-info-updated" class="info-value">—</div>
+          <div class="info-label">Name</div>
+          <div class="info-value" style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="aoi-info-name" class="info-input" />
+            <button id="btn-rename-aoi" class="btn-xs btn-xs--accent">Save</button>
+          </div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Type</div>
+          <div id="aoi-info-type" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Coordinates</div>
+          <div id="aoi-info-coords" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Points</div>
+          <div id="aoi-info-points" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Area Size</div>
+          <div id="aoi-info-size" class="info-value">—</div>
+        </div>
+        <div class="info-block">
+          <div class="info-label">Center</div>
+          <div id="aoi-info-center" class="info-value">—</div>
+        </div>
+        <div class="info-block" id="aoi-info-target-row">
+          <div class="info-label">Target Location</div>
+          <div id="aoi-info-target" class="info-value">—</div>
         </div>
         <hr class="info-divider" />
-        <button id="btn-delete-unit" class="btn-danger">🗑 Delete Unit</button>
-        <button id="btn-center-unit-map" class="btn-xs btn-xs--accent" style="margin-top:8px">🗺 Center on Map</button>
+        <button id="btn-delete-aoi" class="btn-danger">🗑 Delete Area</button>
+        <button id="btn-center-aoi-map" class="btn-xs btn-xs--accent" style="margin-top:8px">🗺 Center on Map</button>
+      </div>
+
+      <!-- ── Tab: Ruleset ── -->
+      <div class="hub-tab-content" id="tab-aoi-ruleset">
+        <div class="panel-section-title">Ruleset Definition</div>
+        <div class="info-block">
+          <div class="info-label">Ruleset</div>
+          <textarea id="aoi-ruleset-editor" class="info-textarea" placeholder="Enter rules for this area..."></textarea>
+        </div>
+        <div class="mini-form-actions" style="margin-top:12px">
+          <button id="btn-save-aoi-ruleset" class="btn-xs btn-xs--accent">💾 Save Ruleset</button>
+          <button id="btn-export-aoi-ruleset" class="btn-xs">📥 Export</button>
+          <button id="btn-import-aoi-ruleset" class="btn-xs">📤 Import</button>
+          <input type="file" id="aoi-ruleset-import-file" accept=".txt" style="display:none" />
+        </div>
       </div>
     </div>
 
@@ -805,23 +651,33 @@
         </div>
         <div class="context-divider"></div>
         <div class="context-options">
-          <button class="context-option" data-map-action="spawn-drone">
+          <!-- Air Units Submenu -->
+          <div class="context-option context-option--has-submenu" data-map-action="air-units">
             <span class="context-option-icon">🚁</span>
-            <span class="context-option-label">Spawn Drone Here</span>
-          </button>
+            <span class="context-option-label">Air Units</span>
+            <span class="submenu-arrow">▶</span>
+          </div>
+          
+          <!-- Ground Units Submenu -->
+          <div class="context-option context-option--has-submenu" data-map-action="ground-units">
+            <span class="context-option-icon">🚗</span>
+            <span class="context-option-label">Ground Units</span>
+            <span class="submenu-arrow">▶</span>
+          </div>
+          
+          <!-- Naval Units Submenu -->
+          <div class="context-option context-option--has-submenu" data-map-action="naval-units">
+            <span class="context-option-icon">🚤</span>
+            <span class="context-option-label">Naval Units</span>
+            <span class="submenu-arrow">▶</span>
+          </div>
+          
+          <div class="context-divider"></div>
+          
           <button class="context-option" data-map-action="place-hub">
             <span class="context-option-icon">🏠</span>
             <span class="context-option-label">Place Hub Here</span>
           </button>
-          <button class="context-option" data-map-action="spawn-ground">
-            <span class="context-option-icon">🚗</span>
-            <span class="context-option-label">Spawn Ground Unit Here</span>
-          </button>
-          <button class="context-option" data-map-action="spawn-naval">
-            <span class="context-option-icon">🚤</span>
-            <span class="context-option-label">Spawn Naval Unit Here</span>
-          </button>
-          <div class="context-divider"></div>
           <button class="context-option" data-map-action="draw-area">
             <span class="context-option-icon">🔷</span>
             <span class="context-option-label">Draw Area Here</span>
@@ -832,6 +688,26 @@
           </button>
         </div>
       </div>
+    </div>
+    
+    <!-- Air Units Submenu -->
+    <div class="context-submenu hidden" id="submenu-air-units">
+      <div class="context-submenu-item" data-unit-type="drone">🚁 Drone</div>
+    </div>
+    
+    <!-- Ground Units Submenu -->
+    <div class="context-submenu hidden" id="submenu-ground-units">
+      <div class="context-submenu-item" data-unit-type="humans">👤 Infantry</div>
+      <div class="context-submenu-item" data-unit-type="ifv">🛡️ IFV</div>
+      <div class="context-submenu-item" data-unit-type="tank">🪖 Tank</div>
+      <div class="context-submenu-item" data-unit-type="truck">🚚 Truck</div>
+    </div>
+    
+    <!-- Naval Units Submenu -->
+    <div class="context-submenu hidden" id="submenu-naval-units">
+      <div class="context-submenu-item" data-unit-type="fast-boat">🚤 Fast Boat</div>
+      <div class="context-submenu-item" data-unit-type="battleship">⚓ Battleship</div>
+      <div class="context-submenu-item" data-unit-type="aircraft-carrier">✈️ Aircraft Carrier</div>
     </div>
 
     <!-- Entity Context Menu (right-click on drone/hub markers) -->
@@ -914,8 +790,13 @@ Example rules:
   <!-- Cookie Policy (must load before app.js) -->
   <script src="cookie-policy.js"></script>
   
-  <!-- Auth and App -->
+  <!-- Auth Client (must load before app.js) -->
+  <script src="auth-client.js"></script>
+  
+  <!-- Auth (legacy, kept for compatibility) -->
   <script src="auth.js"></script>
+  
+  <!-- App (includes authentication check) -->
   <script src="app.js"></script>
 </body>
 </html>
