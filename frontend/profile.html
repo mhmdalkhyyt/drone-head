@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Profile - Drone Command Center</title>
+  
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="auth.css" />
+  <link rel="stylesheet" href="profile.css" />
+</head>
+<body class="profile-page">
+  <div class="profile-container">
+    <!-- Header -->
+    <header class="profile-header">
+      <div class="profile-header__content">
+        <a href="index.html" class="profile-back-link">
+          <span class="profile-back-icon">←</span>
+          <span>Back to Dashboard</span>
+        </a>
+        <h1 class="profile-title">User Profile</h1>
+      </div>
+    </header>
+
+    <!-- Profile Content -->
+    <main class="profile-content">
+      <!-- User Info Card -->
+      <div class="profile-card">
+        <div class="profile-card__header">
+          <div class="profile-avatar">
+            <span class="profile-avatar__initial" id="profile-initial">U</span>
+          </div>
+          <div class="profile-card__info">
+            <h2 class="profile-card__name" id="profile-username">Loading...</h2>
+            <p class="profile-card__joined" id="profile-joined">Joined: -</p>
+          </div>
+        </div>
+        
+        <div class="profile-card__divider"></div>
+        
+        <div class="profile-card__body">
+          <form id="profile-form" class="profile-form">
+            <div class="form-group">
+              <label for="display-name" class="form-label">Display Name</label>
+              <input 
+                type="text" 
+                id="display-name" 
+                name="display_name"
+                class="form-input" 
+                placeholder="Enter your display name"
+              />
+              <p class="form-hint">Optional: A friendly name shown to others</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="email" class="form-label">Email Address</label>
+              <input 
+                type="email" 
+                id="email" 
+                name="email"
+                class="form-input" 
+                placeholder="Enter your email address"
+              />
+              <p class="form-hint">Optional: Used for account notifications</p>
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn btn--primary">Save Changes</button>
+              <button type="button" id="btn-cancel" class="btn btn--secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Password Change Card -->
+      <div class="profile-card">
+        <div class="profile-card__header">
+          <h3 class="profile-card__subtitle">Change Password</h3>
+        </div>
+        
+        <div class="profile-card__divider"></div>
+        
+        <div class="profile-card__body">
+          <form id="password-form" class="profile-form">
+            <div class="form-group">
+              <label for="current-password" class="form-label">Current Password</label>
+              <input 
+                type="password" 
+                id="current-password" 
+                name="current_password"
+                class="form-input" 
+                placeholder="Enter current password"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password" class="form-label">New Password</label>
+              <input 
+                type="password" 
+                id="new-password" 
+                name="new_password"
+                class="form-input" 
+                placeholder="Enter new password (min. 6 characters)"
+              />
+              <p class="form-hint">Must be at least 6 characters long</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="confirm-password" class="form-label">Confirm New Password</label>
+              <input 
+                type="password" 
+                id="confirm-password" 
+                name="confirm_password"
+                class="form-input" 
+                placeholder="Confirm new password"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn btn--primary">Change Password</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Account Actions Card -->
+      <div class="profile-card profile-card--danger">
+        <div class="profile-card__header">
+          <h3 class="profile-card__subtitle">Danger Zone</h3>
+        </div>
+        
+        <div class="profile-card__divider"></div>
+        
+        <div class="profile-card__body">
+          <div class="danger-zone">
+            <p class="danger-zone__text">
+              Once you delete your account, there is no going back. Please be certain.
+            </p>
+            <button type="button" id="btn-delete-account" class="btn btn--danger">
+              Delete Account
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast toast--hidden">
+    <span id="toast-message"></span>
+  </div>
+
+  <script src="profile.js"></script>
+</body>
+</html>

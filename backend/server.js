@@ -59,6 +59,19 @@ db.exec(`
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS user_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    display_name TEXT,
+    email TEXT,
+    preferences TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
+
   CREATE TABLE IF NOT EXISTS user_states (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -101,6 +114,9 @@ let pathSeq    = 1;
 let navalUnitSeq = 1;
 let waterAreaSeq = 1;
 let waypointSeq = 1;
+
+// Track round-robin fleet assignments for each hub
+const hubFleetAssignments = new Map(); // hubId → nextFleetIndex
 
 // SSE clients
 const sseClients = new Set();
@@ -221,6 +237,126 @@ app.get('/api/auth/users', authenticateToken, (req, res) => {
   } catch (error) {
     console.error('List users error:', error);
     res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+// Get current user profile with extended info
+app.get('/api/auth/me/profile', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get basic user info
+    const user = db.prepare('SELECT id, username, created_at FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Get or create profile
+    let profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId);
+    if (!profile) {
+      db.prepare('INSERT INTO user_profiles (user_id, display_name, preferences) VALUES (?, NULL, NULL)').run(userId);
+      profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId);
+    }
+    
+    res.json({ 
+      user: { id: user.id, username: user.username, created_at: user.created_at },
+      profile: { 
+        id: profile.id, 
+        display_name: profile.display_name, 
+        email: profile.email,
+        preferences: profile.preferences ? JSON.parse(profile.preferences) : null,
+        updated_at: profile.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ error: 'Failed to get profile' });
+  }
+});
+
+// Update user profile
+app.put('/api/auth/me/profile', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { display_name, email, preferences } = req.body;
+    
+    // Validate email if provided
+    if (email && !email.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    
+    // Update or insert profile
+    const existingProfile = db.prepare('SELECT id FROM user_profiles WHERE user_id = ?').get(userId);
+    
+    if (existingProfile) {
+      db.prepare(`
+        UPDATE user_profiles 
+        SET display_name = COALESCE(?, display_name),
+            email = COALESCE(?, email),
+            preferences = COALESCE(?, preferences),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `).run(display_name, email, preferences ? JSON.stringify(preferences) : null, userId);
+    } else {
+      db.prepare(`
+        INSERT INTO user_profiles (user_id, display_name, email, preferences)
+        VALUES (?, ?, ?, ?)
+      `).run(userId, display_name, email, preferences ? JSON.stringify(preferences) : null);
+    }
+    
+    // Fetch updated profile
+    const profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId);
+    
+    res.json({ 
+      message: 'Profile updated successfully',
+      profile: { 
+        id: profile.id, 
+        display_name: profile.display_name, 
+        email: profile.email,
+        preferences: profile.preferences ? JSON.parse(profile.preferences) : null,
+        updated_at: profile.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Change password
+app.put('/api/auth/me/password', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { current_password, new_password } = req.body;
+    
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+    
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    
+    // Get current user
+    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Verify current password
+    const validPassword = await bcrypt.compare(current_password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    
+    // Update password
+    const newHash = await bcrypt.hash(new_password, 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, userId);
+    
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Failed to change password' });
   }
 });
 
@@ -810,7 +946,7 @@ app.get('/api/hubs/:hubId/drones', (req, res) => {
   res.json(getHubDrones(hubId));
 });
 
-// Assign drone to a hub
+// Assign drone to a hub with round-robin fleet assignment
 app.post('/api/drones/:id/assign-hub', (req, res) => {
   const { id } = req.params;
   const { hubId } = req.body;
@@ -828,6 +964,27 @@ app.post('/api/drones/:id/assign-hub', (req, res) => {
     }
   }
 
+  // Get all fleets for the target hub
+  const hubFleets = [...fleets.values()].filter(f => f.hubId === hubId);
+
+  // Round-robin assignment logic
+  let selectedFleet = null;
+  if (hubFleets.length > 0) {
+    // Get the next fleet index for this hub (round-robin)
+    const nextIndex = hubFleetAssignments.get(hubId) || 0;
+    selectedFleet = hubFleets[nextIndex % hubFleets.length];
+
+    // Update the round-robin index for next assignment
+    hubFleetAssignments.set(hubId, nextIndex + 1);
+
+    // Add drone to the selected fleet
+    if (!selectedFleet.droneIds.includes(id)) {
+      selectedFleet.droneIds.push(id);
+      broadcastFleet(selectedFleet);
+    }
+  }
+
+  // Update drone hub assignment
   drone.hubId = hubId;
   drone.updatedAt = new Date().toISOString();
   drones.set(id, drone);
@@ -1625,6 +1782,42 @@ app.post('/api/hubs/:hubId/missions/:missionId/complete', (req, res) => {
   mission.completedAt = new Date().toISOString();
   broadcastMission(mission);
   res.json(mission);
+});
+
+// Simulate a computer-generated mission (triggers notification toast)
+app.post('/api/missions/simulate', (req, res) => {
+  const { title, type, priority, hubId } = req.body;
+  
+  // Generate random mission if not provided
+  const missionTitle = title || `Auto-Mission ${missionSeq++}`;
+  const missionType = type || ['general', 'surveillance', 'delivery', 'search', 'inspection'][Math.floor(Math.random() * 5)];
+  const missionPriority = priority || ['high', 'medium', 'low'][Math.floor(Math.random() * 3)];
+  const missionHubId = hubId || [...hubs.keys()][Math.floor(Math.random() * hubs.size)] || null;
+  
+  // Create a simulated mission object
+  const simulatedMission = {
+    id: `sim-mission-${Date.now()}`,
+    title: missionTitle,
+    type: missionType,
+    priority: missionPriority,
+    hubId: missionHubId,
+    status: 'active',
+    requiredDrones: Math.floor(Math.random() * 3) + 1,
+    createdAt: new Date().toISOString()
+  };
+  
+  // Broadcast the mission notification via SSE
+  broadcast({ 
+    type: 'mission:notification', 
+    mission: simulatedMission,
+    priority: missionPriority
+  });
+  
+  res.status(201).json({ 
+    success: true, 
+    mission: simulatedMission,
+    message: 'Mission simulation triggered'
+  });
 });
 
 // ─── No-Go Zone routes ────────────────────────────────────────────────────────

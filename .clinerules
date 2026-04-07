@@ -1,0 +1,474 @@
+# Drone Head - Cline Rules
+
+## Project Overview
+
+Drone Head is a real-time location tracking and mission management system for drones, ground units, and naval units. Built with Node.js/Express backend, vanilla HTML/CSS/JS frontend, and SQLite database.
+
+## Tech Stack
+
+- **Backend**: Node.js, Express.js, better-sqlite3
+- **Authentication**: JWT, bcrypt
+- **Real-time**: Server-Sent Events (SSE)
+- **Frontend**: Vanilla HTML/CSS/JavaScript, Leaflet.js
+- **Maps**: CartoDB Dark Matter tiles
+- **Deployment**: Docker, Docker Compose
+
+## Project Structure
+
+```
+drone-head/
+├── backend/
+│   ├── server.js              # Main application (2500+ lines)
+│   ├── package.json
+│   ├── Dockerfile
+│   └── data/
+│       └── data.db
+├── frontend/
+│   ├── index.html             # Main dashboard
+│   ├── app.js                 # Main application (3200+ lines)
+│   ├── style.css
+│   ├── auth.js
+│   ├── auth.css
+│   ├── profile.html
+│   ├── profile.js
+│   ├── profile.css
+│   └── login/
+│       ├── login.html
+│       ├── login.js
+│       └── login.css
+├── docker-compose.yml
+├── docs/                      # Documentation
+├── memory-bank/               # Cline Memory Bank
+└── .clinerules                # This file
+```
+
+## Backend Patterns (server.js)
+
+### In-Memory Data Stores
+
+All entities use JavaScript Maps for O(1) lookup:
+
+```javascript
+const drones   = new Map();   // id → drone
+const hubs     = new Map();   // id → hub
+const fleets   = new Map();   // id → fleet
+const missions = new Map();   // id → mission
+// ... etc
+```
+
+### Route Handler Pattern
+
+```javascript
+// GET all
+app.get('/api/resource', (req, res) => {
+  res.json([...resourceMap.values()]);
+});
+
+// POST create
+app.post('/api/resource', (req, res) => {
+  const { field1, field2 } = req.body;
+  const id = `resource-${seq++}`;
+  const resource = { id, field1, field2, createdAt: new Date().toISOString() };
+  resourceMap.set(id, resource);
+  broadcastResource(resource);
+  res.status(201).json(resource);
+});
+
+// DELETE
+app.delete('/api/resource/:id', (req, res) => {
+  if (!resourceMap.has(req.params.id)) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  resourceMap.delete(req.params.id);
+  broadcastResourceRemove(req.params.id);
+  res.json({ success: true });
+});
+```
+
+### Broadcasting Pattern
+
+```javascript
+// Broadcast to all SSE clients
+function broadcast(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach(res => res.write(msg));
+}
+
+// Type-specific broadcasts
+function broadcastResource(resource) {
+  broadcast({ type: 'resource:update', resource });
+}
+
+function broadcastResourceRemove(id) {
+  broadcast({ type: 'resource:remove', id });
+}
+```
+
+### Authentication Middleware
+
+```javascript
+function authenticateToken(req, res, next) {
+  // Skip in development mode
+  if (DEVELOPMENT_MODE) {
+    req.user = { id: 'dev-user', username: 'development' };
+    return next();
+  }
+  
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+  
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+}
+
+// Usage
+app.get('/api/protected', authenticateToken, (req, res) => {
+  res.json({ user: req.user });
+});
+```
+
+### Entity ID Patterns
+
+- Drones: `drone-{seq}`
+- Hubs: `hub-{seq}`
+- Fleets: `fleet-{seq}`
+- Missions: `mission-{seq}`
+- Ground Units: `ground-{seq}`
+- Roads: `road-{seq}`
+- Naval Units: `naval-{seq}`
+
+## Frontend Patterns (app.js)
+
+### State Management
+
+```javascript
+const state = {
+  drones: {},      // id → drone
+  markers: {},     // id → Leaflet marker
+  selected: null,  // selected entity id
+  hubs: {},        // id → hub
+  // ... etc
+};
+```
+
+### SSE Connection Pattern
+
+```javascript
+const eventSource = new EventSource('/api/events');
+
+eventSource.addEventListener('message', (event) => {
+  const data = JSON.parse(event.data);
+  
+  if (data.type === 'snapshot') {
+    // Initialize state
+    data.drones.forEach(d => state.drones[d.id] = d);
+    // ... initialize other entities
+  }
+  
+  // Handle updates
+  if (data.type === 'drone:update') {
+    state.drones[data.drone.id] = data.drone;
+    upsertMarker(data.drone);
+  }
+});
+```
+
+### API Call Pattern
+
+```javascript
+// GET
+async function getDrones() {
+  const res = await fetch('/api/drones');
+  return res.json();
+}
+
+// POST
+async function createDrone(data) {
+  const res = await fetch('/api/drones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+// With auth
+async function getProfile() {
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/auth/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return res.json();
+}
+```
+
+### Leaflet Map Patterns
+
+```javascript
+// Initialize map
+const map = L.map('map', { zoomControl: true }).setView([59.3293, 18.0686], 13);
+
+// Add tile layer
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO',
+  maxZoom: 19,
+}).addTo(map);
+
+// Create custom icon
+function droneIcon(status) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="drone-marker drone-marker--${status}">🚁</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  });
+}
+
+// Add marker
+const marker = L.marker([lat, lng], { icon: droneIcon('active') }).addTo(map);
+marker.bindPopup('Drone info').openPopup();
+```
+
+## Entity Data Models
+
+### Drone
+```javascript
+{
+  id, name, lat, lng, altitude, speed,
+  status: 'active'|'idle'|'warning',
+  battery: 0-100, hubId, updatedAt
+}
+```
+
+### Hub
+```javascript
+{
+  id, name, lat, lng, createdAt
+}
+```
+
+### Fleet
+```javascript
+{
+  id, hubId, name, droneIds[],
+  status: 'idle'|'on-mission',
+  currentMissionId, createdAt
+}
+```
+
+### Mission
+```javascript
+{
+  id, hubId, title, type, requiredDrones, priority,
+  status: 'queued'|'active'|'done',
+  assignedFleetId, waypointId,
+  endCondition: 'manual'|'arrival'|'drone_reached'|'time_elapsed'|'fleet_idle',
+  createdAt, startedAt, completedAt
+}
+```
+
+### Ground Unit
+```javascript
+{
+  id, name, type: 'humans'|'ifv'|'tank'|'truck',
+  lat, lng, speed, status, battery, hubId,
+  onRoad, currentPath[], pathIndex, updatedAt
+}
+```
+
+### Naval Unit
+```javascript
+{
+  id, name, type: 'fast-boat'|'battleship'|'aircraft-carrier',
+  lat, lng, speed, status, battery, hubId,
+  currentPath[], pathIndex, updatedAt
+}
+```
+
+## Key Algorithms
+
+### A* Pathfinding (Ground Units)
+- Build graph from road endpoints/intersections
+- Find nearest road for start/end positions
+- Run A* considering unit type road access
+- Return path or null if not reachable
+
+### No-Go Zone Detection
+- Point-in-polygon: Ray casting algorithm
+- Line-polygon intersection: Line segment intersection
+- Applied to drones, ground units, naval units
+
+### Haversine Distance
+```javascript
+function distance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+```
+
+## Development Commands
+
+```bash
+# Install dependencies
+cd backend && npm install
+
+# Development mode
+cd backend && npm run dev
+
+# Production mode
+cd backend && npm start
+
+# Docker
+docker-compose up -d
+docker-compose logs -f
+docker-compose down
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| PORT | 3000 | Server port |
+| JWT_SECRET | 'drone-head-secret-key...' | JWT signing secret |
+| DEVELOPMENT_MODE | false | Skip authentication |
+| DATA_DIR | backend/data | Database directory |
+| DB_PATH | backend/data/data.db | Database path |
+
+## API Endpoints Summary
+
+### Authentication
+- POST /api/auth/register
+- POST /api/auth/login
+- GET /api/auth/me
+- GET /api/auth/me/profile
+- PUT /api/auth/me/profile
+- PUT /api/auth/me/password
+- DELETE /api/auth/user
+
+### Drones
+- GET /api/drones
+- GET /api/drones/:id
+- POST /api/drones/:id/location
+- POST /api/drones/:id/assign-hub
+- DELETE /api/drones/:id/assign-hub
+- POST /api/drones/:id/simulate
+- DELETE /api/drones/:id/simulate
+- DELETE /api/drones/:id
+
+### Hubs
+- GET /api/hubs
+- POST /api/hubs
+- PATCH /api/hubs/:id
+- DELETE /api/hubs/:id
+
+### Fleets
+- GET /api/hubs/:hubId/fleets
+- POST /api/hubs/:hubId/fleets
+- DELETE /api/hubs/:hubId/fleets/:fleetId
+
+### Missions
+- GET /api/hubs/:hubId/missions
+- POST /api/hubs/:hubId/missions
+- DELETE /api/hubs/:hubId/missions/:missionId
+- POST /api/hubs/:hubId/missions/:missionId/complete
+
+### Ground Units
+- GET /api/ground-units
+- POST /api/ground-units
+- POST /api/ground-units/:id/location
+- POST /api/ground-units/:id/move
+- DELETE /api/ground-units/:id/move
+- DELETE /api/ground-units/:id
+
+### Naval Units
+- GET /api/naval-units
+- POST /api/naval-units
+- POST /api/naval-units/:id/location
+- POST /api/naval-units/:id/move
+- DELETE /api/naval-units/:id/move
+- DELETE /api/naval-units/:id
+
+### Infrastructure
+- GET/POST/DELETE /api/roads
+- GET/POST/DELETE /api/walkable-paths
+- GET/POST/DELETE /api/no-go-zones
+- GET/POST/DELETE /api/water-areas
+- GET/POST/DELETE /api/waypoints
+
+### Real-time
+- GET /api/events (SSE)
+
+## Common Tasks
+
+### Adding a New Entity Type
+
+1. Define in-memory store: `const newEntities = new Map(); let newEntitySeq = 1;`
+2. Add broadcast functions: `broadcastNewEntity()`, `broadcastNewEntityRemove()`
+3. Add to SSE snapshot
+4. Add CRUD routes following patterns above
+5. Add to frontend state
+6. Add marker/rendering functions
+7. Add SSE event handlers
+
+### Adding Simulation/Movement
+
+1. Create simulation state Map
+2. Implement movement calculation function
+3. Use setInterval for periodic updates
+4. Check for stop conditions (reached, blocked, etc.)
+5. Broadcast updates
+6. Clean up on completion/error
+
+## Code Style
+
+- Use `const` by default, `let` when reassignment needed
+- Arrow functions for callbacks and short functions
+- Template literals for string interpolation
+- Destructuring for object properties
+- Optional chaining for safe access
+- Strict equality (`===`, `!==`)
+- Async/await for asynchronous operations
+
+## Testing
+
+```bash
+# Manual API testing with curl
+curl -X POST http://localhost:3000/api/drones/test/location \
+  -H "Content-Type: application/json" \
+  -d '{"lat": 59.3293, "lng": 18.0686, "name": "Test"}'
+```
+
+## Documentation Location
+
+- `docs/ARCHITECTURE.md` - System architecture
+- `docs/DEVELOPMENT.md` - Development guide
+- `docs/API.md` - API reference
+- `docs/DATABASE.md` - Database schema
+- `docs/FEATURES.md` - Feature documentation
+- `docs/DEPLOYMENT.md` - Deployment guide
+- `memory-bank/` - Cline Memory Bank
+
+## Important Notes
+
+1. **In-Memory Data**: All operational data is lost on server restart
+2. **SQLite**: Only user data (accounts, states) is persisted
+3. **SSE**: Single connection per client, sends snapshots on connect
+4. **Development Mode**: Authentication bypassed when DEVELOPMENT_MODE is set
+5. **Round-Robin**: Fleet assignment uses round-robin for even distribution
+6. **No-Go Zones**: All movement types respect no-go zones
+7. **Water Areas**: Naval units can only exist on water areas

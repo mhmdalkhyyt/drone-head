@@ -117,68 +117,70 @@
         
         <div id="options-panel">
           <button id="options-toggle" class="btn-icon" title="Options">⚙️ Options</button>
-            <div id="options-dropdown" class="options-dropdown hidden">
-              <!-- Save/Load State Section -->
-              <div class="options-item">
-                <span class="options-label">Save/Load State</span>
-                <input type="text" id="state-name" placeholder="State name (optional)" class="state-name-input" />
-                <button id="btn-save-state" class="btn-xs btn-xs--accent">💾 Save State</button>
-                <select id="state-select" class="state-select">
-                  <option value="">Select saved state...</option>
-                </select>
-                <div class="state-buttons">
-                  <button id="btn-load-state" class="btn-xs">📂 Load</button>
-                  <button id="btn-delete-state" class="btn-xs">🗑 Delete</button>
-                </div>
-              </div>
-              <div class="options-divider"></div>
-              <div class="options-item">
-                <span class="options-label">Map Controls</span>
-                <button id="btn-zoom-in" class="btn-xs" title="Zoom In">+</button>
-                <button id="btn-zoom-out" class="btn-xs" title="Zoom Out">−</button>
-              </div>
-              <div class="options-divider"></div>
-              <div class="options-item">
-                <span class="options-label">Display</span>
-                <label class="options-toggle">
-                  <input type="checkbox" id="toggle-grid" />
-                  <span class="toggle-slider"></span>
-                  Show Grid
-                </label>
-                <label class="options-toggle">
-                  <input type="checkbox" id="toggle-coords" checked />
-                  <span class="toggle-slider"></span>
-                  Show Coordinates
-                </label>
-              </div>
-              <div class="options-divider"></div>
-              <div class="options-item">
-                <span class="options-label">Zone Highlight</span>
-                <div class="color-picker-wrapper">
-                  <label for="highlight-color-picker" class="color-picker-label">Highlight Color</label>
-                  <input type="color" id="highlight-color-picker" value="#00d9ff" />
-                  <span id="highlight-color-preview" class="color-preview" style="background-color: #00d9ff;"></span>
-                </div>
-                <button id="btn-highlight-zone" class="btn-xs btn-xs--accent" style="margin-top: 8px;">🎨 Highlight Selected Zone</button>
-                <button id="btn-cancel-highlight" class="btn-xs" style="margin-top: 4px;">Cancel Highlight (Esc)</button>
-              </div>
-              <div class="options-divider"></div>
-              <div class="options-item">
-                <span class="options-label">Theme</span>
-                <select id="theme-select" class="options-select">
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                  <option value="midnight">Midnight</option>
-                  <option value="desert">Desert</option>
-                </select>
-              </div>
-              <div class="options-divider"></div>
-              <div class="options-item">
-                <button id="btn-cookie-settings" class="btn-xs btn-xs--secondary" style="width: 100%;">
-                  🍪 Cookie Preferences
-                </button>
+          <div id="options-dropdown" class="options-dropdown hidden">
+            <!-- Save/Load State Section -->
+            <div class="options-item">
+              <span class="options-label">Save/Load State</span>
+              <input type="text" id="state-name" placeholder="State name (optional)" class="state-name-input" />
+              <button id="btn-save-state" class="btn-xs btn-xs--accent">💾 Save State</button>
+              <select id="state-select" class="state-select">
+                <option value="">Select saved state...</option>
+              </select>
+              <div class="state-buttons">
+                <button id="btn-load-state" class="btn-xs">📂 Load</button>
+                <button id="btn-delete-state" class="btn-xs">🗑 Delete</button>
               </div>
             </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <span class="options-label">Map Controls</span>
+              <button id="btn-zoom-in" class="btn-xs" title="Zoom In">+</button>
+              <button id="btn-zoom-out" class="btn-xs" title="Zoom Out">−</button>
+            </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <span class="options-label">Display</span>
+              <label class="options-toggle">
+                <input type="checkbox" id="toggle-grid" />
+                <span class="toggle-slider"></span>
+                Show Grid
+              </label>
+              <label class="options-toggle">
+                <input type="checkbox" id="toggle-coords" checked />
+                <span class="toggle-slider"></span>
+                Show Coordinates
+              </label>
+            </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <span class="options-label">Zone Highlight</span>
+              <div class="color-picker-wrapper">
+                <label for="highlight-color-picker" class="color-picker-label">Highlight Color</label>
+                <input type="color" id="highlight-color-picker" value="#00d9ff" />
+                <span id="highlight-color-preview" class="color-preview" style="background-color: #00d9ff;"></span>
+              </div>
+              <button id="btn-highlight-zone" class="btn-xs btn-xs--accent" style="margin-top: 8px;">🎨 Highlight Selected Zone</button>
+              <button id="btn-cancel-highlight" class="btn-xs" style="margin-top: 4px;">Cancel Highlight (Esc)</button>
+            </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <span class="options-label">Theme</span>
+              <select id="theme-select" class="options-select">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="midnight">Midnight</option>
+                <option value="desert">Desert</option>
+              </select>
+            </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <a href="profile.html" class="btn-xs btn-xs--secondary" style="width: 100%; display: block; text-align: center; text-decoration: none;">👤 User Profile</a>
+            </div>
+            <div class="options-divider"></div>
+            <div class="options-item">
+              <button id="btn-cookie-settings" class="btn-xs btn-xs--secondary" style="width: 100%;">🍪 Cookie Preferences</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -601,6 +603,9 @@
     <div id="toast-notification" class="toast hidden">
       <span id="toast-message"></span>
     </div>
+    
+    <!-- Mission notification toasts container (bottom center of map) -->
+    <div id="mission-toast-container" class="mission-toast-container"></div>
 
     <!-- Ruleset Editor Modal -->
     <div id="ruleset-modal" class="modal hidden">

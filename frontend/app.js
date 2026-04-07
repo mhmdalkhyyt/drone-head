@@ -1878,6 +1878,7 @@ function connect() {
       case 'nogozone:update': applyNoGoZoneUpdate(msg.zone); break;
       case 'nogozone:remove': applyNoGoZoneRemove(msg.id); break;
       case 'simulation:blocked': handleSimulationBlocked(msg); break;
+      case 'mission:notification': handleMissionNotification(msg); break;
     }
   };
   
@@ -2027,6 +2028,76 @@ function showToast(message) {
     toastMessage.textContent = message;
     toast.classList.remove('hidden');
     setTimeout(() => toast.classList.add('hidden'), 2000);
+  }
+}
+
+/* ── Mission Toast Notifications ───────────────────────────────── */
+function showMissionToast(mission, priority = 'medium') {
+  const container = document.getElementById('mission-toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `mission-toast mission-toast--${priority}`;
+  
+  // Icon based on mission type
+  const typeIcons = {
+    'general': '📋',
+    'surveillance': '👁',
+    'delivery': '📦',
+    'search': '🔍',
+    'inspection': '🔎'
+  };
+  const icon = typeIcons[mission.type] || '📋';
+  
+  // Priority labels
+  const priorityLabels = {
+    'high': '🔴 HIGH PRIORITY',
+    'medium': '🟡 MEDIUM PRIORITY',
+    'low': '🟢 LOW PRIORITY'
+  };
+  
+  toast.innerHTML = `
+    <span class="mission-toast-icon">${icon}</span>
+    <span class="mission-toast-content">
+      <strong>${mission.title}</strong>
+      <br><small>${mission.type.charAt(0).toUpperCase() + mission.type.slice(1)} mission assigned</small>
+    </span>
+    <button class="mission-toast-close" title="Close">✕</button>
+    <div class="mission-toast-progress"></div>
+  `;
+  
+  // Close button handler
+  const closeBtn = toast.querySelector('.mission-toast-close');
+  closeBtn.addEventListener('click', () => {
+    closeMissionToast(toast);
+  });
+  
+  container.appendChild(toast);
+  
+  // Auto-dismiss after 5 seconds (unless high priority)
+  if (priority !== 'high') {
+    setTimeout(() => {
+      if (toast.parentNode) closeMissionToast(toast);
+    }, 5000);
+  }
+}
+
+function closeMissionToast(toast) {
+  if (toast.classList.contains('closing')) return;
+  
+  toast.classList.add('closing');
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 300);
+}
+
+// Handle mission notification SSE events
+function handleMissionNotification(msg) {
+  const { mission, priority } = msg;
+  if (mission) {
+    showMissionToast(mission, priority || 'medium');
   }
 }
 
