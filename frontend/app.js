@@ -1360,6 +1360,207 @@ function renderFleetList(hubId) {
   });
 }
 
+/* ── Mission List Rendering ──────────────────────────────────── */
+function renderMissionList(hubId) {
+  const container = document.getElementById('mission-list');
+  if (!container) return;
+  
+  const hubMissions = Object.values(state.missions).filter(m => m.hubId === hubId);
+  
+  container.innerHTML = '';
+  
+  if (!hubMissions.length) {
+    container.innerHTML = '<li class="mission-list__empty">No missions queued. Click "+ Add Mission" to create one.</li>';
+    return;
+  }
+  
+  // Sort by priority (lower number = higher priority) and status (queued first, then active)
+  const sortedMissions = [...hubMissions].sort((a, b) => {
+    if (a.status === 'active' && b.status !== 'active') return -1;
+    if (a.status !== 'active' && b.status === 'active') return 1;
+    return a.priority - b.priority;
+  });
+  
+  sortedMissions.forEach(mission => {
+    const li = document.createElement('li');
+    li.className = `mission-list__item mission-list__item--${mission.status}`;
+    li.dataset.id = mission.id;
+    
+    const statusLabel = {
+      'queued': '🟡 Queued',
+      'active': '🟢 Active',
+      'done': '⚪ Completed'
+    }[mission.status] || 'Queued';
+    
+    const priorityLabel = mission.priority <= 10 ? '🔴 High' : mission.priority <= 50 ? '🟡 Medium' : '🟢 Low';
+    
+    const waypointInfo = mission.waypointId ? `<span class="mission-waypoint">📍 ${mission.waypointId}</span>` : '';
+    
+    li.innerHTML = `
+      <div class="mission-list__header">
+        <span class="mission-list__title">${mission.title}</span>
+        <span class="mission-list__status">${statusLabel}</span>
+      </div>
+      <div class="mission-list__meta">
+        <span class="mission-list__type">${mission.type}</span>
+        <span class="mission-list__priority">${priorityLabel}</span>
+        <span class="mission-list__drones">${mission.requiredDrones || 1} drone(s)</span>
+        ${waypointInfo}
+      </div>
+      <div class="mission-list__actions">
+        ${mission.status !== 'done' ? `<button class="btn-xs btn-xs--success mission-done" data-id="${mission.id}" title="Mark as done">✓ Done</button>` : ''}
+        <button class="btn-xs btn-xs--danger mission-delete" data-id="${mission.id}" title="Delete mission">🗑 Delete</button>
+      </div>
+    `;
+    
+    container.appendChild(li);
+  });
+  
+  // Bind event handlers
+  container.querySelectorAll('.mission-done').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const missionId = btn.dataset.id;
+      await completeMission(hubId, missionId);
+    });
+  });
+  
+  container.querySelectorAll('.mission-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const missionId = btn.dataset.id;
+      if (confirm('Delete this mission?')) {
+        await deleteMission(hubId, missionId);
+      }
+    });
+  });
+}
+
+/* ── Drone List Rendering for Hub ────────────────────────────── */
+function renderDroneList(hubId) {
+  const container = document.getElementById('drone-list-hub');
+  if (!container) return;
+  
+  const hubDrones = Object.values(state.drones).filter(d => d.hubId === hubId);
+  const unassignedDrones = Object.values(state.drones).filter(d => !d.hubId);
+  
+  container.innerHTML = '';
+  
+  // Assigned drones section
+  const assignedSection = document.createElement('div');
+  assignedSection.className = 'drone-list-section';
+  assignedSection.innerHTML = '<h4 class="drone-list-section__title">🏠 Drones Assigned to This Hub</h4>';
+  
+  if (!hubDrones.length) {
+    assignedSection.innerHTML += '<p class="drone-list-empty">No drones assigned to this hub yet.</p>';
+  } else {
+    const assignedList = document.createElement('div');
+    assignedList.className = 'drone-list-container';
+    
+    hubDrones.forEach(drone => {
+      const fleet = Object.values(state.fleets).find(f => f.droneIds?.includes(drone.id));
+      const card = document.createElement('div');
+      card.className = 'drone-list-card';
+      card.dataset.id = drone.id;
+      
+      const battClass = drone.battery > 50 ? 'high' : drone.battery > 20 ? 'medium' : 'low';
+      const fleetInfo = fleet ? `<span class="drone-list-fleet-tag">${fleet.name}</span>` : '<span class="drone-list-fleet-tag drone-list-fleet-tag--none">No fleet</span>';
+      
+      card.innerHTML = `
+        <div class="drone-list-header">
+          <span class="drone-list-name">${drone.name}</span>
+          <span class="drone-list-id">${drone.id}</span>
+          ${fleetInfo}
+        </div>
+        <div class="drone-list-stats">
+          <span>🔋 ${drone.battery}%</span>
+          <span>📍 ${drone.lat.toFixed(4)}, ${drone.lng.toFixed(4)}</span>
+          <span class="status-dot status-dot--${drone.status}"></span>
+        </div>
+        <div class="drone-list-battery">
+          <div class="battery-bar battery-bar--${battClass}">
+            <div class="battery-fill" style="width:${drone.battery}%"></div>
+          </div>
+        </div>
+        <button class="btn-xs btn-xs--danger drone-unassign-from-hub" data-id="${drone.id}" title="Unassign from hub">Unassign</button>
+      `;
+      
+      assignedList.appendChild(card);
+    });
+    
+    assignedSection.appendChild(assignedList);
+  }
+  
+  container.appendChild(assignedSection);
+  
+  // Unassigned drones section
+  const unassignedSection = document.createElement('div');
+  unassignedSection.className = 'drone-list-section';
+  unassignedSection.innerHTML = '<h4 class="drone-list-section__title">📡 Available Drones (Unassigned)</h4>';
+  
+  if (!unassignedDrones.length) {
+    unassignedSection.innerHTML += '<p class="drone-list-empty">All drones are assigned to hubs.</p>';
+  } else {
+    const unassignedList = document.createElement('div');
+    unassignedList.className = 'drone-list-container';
+    
+    unassignedDrones.forEach(drone => {
+      const card = document.createElement('div');
+      card.className = 'drone-list-card drone-list-card--available';
+      card.dataset.id = drone.id;
+      
+      const battClass = drone.battery > 50 ? 'high' : drone.battery > 20 ? 'medium' : 'low';
+      
+      card.innerHTML = `
+        <div class="drone-list-header">
+          <span class="drone-list-name">${drone.name}</span>
+          <span class="drone-list-id">${drone.id}</span>
+        </div>
+        <div class="drone-list-stats">
+          <span>🔋 ${drone.battery}%</span>
+          <span>📍 ${drone.lat.toFixed(4)}, ${drone.lng.toFixed(4)}</span>
+          <span class="status-dot status-dot--${drone.status}"></span>
+        </div>
+        <div class="drone-list-battery">
+          <div class="battery-bar battery-bar--${battClass}">
+            <div class="battery-fill" style="width:${drone.battery}%"></div>
+          </div>
+        </div>
+        <button class="btn-xs btn-xs--primary drone-assign-to-hub" data-id="${drone.id}" title="Assign to this hub">Assign to Hub</button>
+      `;
+      
+      unassignedList.appendChild(card);
+    });
+    
+    unassignedSection.appendChild(unassignedList);
+  }
+  
+  container.appendChild(unassignedSection);
+  
+  // Bind event handlers
+  container.querySelectorAll('.drone-unassign-from-hub').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Unassign this drone from the hub?')) return;
+      await unassignDroneFromHub(btn.dataset.id);
+    });
+  });
+  
+  container.querySelectorAll('.drone-assign-to-hub').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await assignDroneToHub(btn.dataset.id, hubId);
+    });
+  });
+}
+
+/* ── Info Tab Rendering ──────────────────────────────────────── */
+function renderInfoTab(hubId) {
+  const hub = state.hubs[hubId];
+  if (!hub) return;
+  
+  document.getElementById('info-hub-id').textContent = hub.id;
+  document.getElementById('info-hub-name').value = hub.name;
+  document.getElementById('info-hub-coords').textContent = `${hub.lat.toFixed(6)}, ${hub.lng.toFixed(6)}`;
+  document.getElementById('info-hub-created').textContent = new Date(hub.createdAt).toLocaleString();
+}
+
 /* ── API Calls ───────────────────────────────────────────────── */
 async function createHub(lat, lng) {
   const name = `Hub #${Object.keys(state.hubs).length + 1}`;
@@ -4065,13 +4266,42 @@ function hideAllSubmenus() {
 }
 
 /**
- * Show a specific submenu
+ * Position and show a specific submenu next to the context menu
  * @param {string} submenuId - The ID of the submenu to show
+ * @param {HTMLElement} parentElement - The parent menu item element
  */
-function showSubmenu(submenuId) {
+function showSubmenu(submenuId, parentElement) {
   hideAllSubmenus();
   const submenu = document.getElementById(submenuId);
-  if (submenu) {
+  if (submenu && parentElement) {
+    // Get the context menu position
+    const contextMenu = mapContextMenu;
+    const contextMenuRect = contextMenu.getBoundingClientRect();
+    const parentRect = parentElement.getBoundingClientRect();
+    
+    // Position submenu to the right of the context menu, aligned with the parent item
+    const submenuLeft = contextMenuRect.right + 4; // 4px gap
+    const submenuTop = parentRect.top;
+    
+    // Check if submenu would go off screen
+    const submenuWidth = 180;
+    const submenuHeight = submenu.offsetHeight || 100;
+    
+    let finalLeft = submenuLeft;
+    let finalTop = submenuTop;
+    
+    // Adjust if submenu would go off right edge
+    if (finalLeft + submenuWidth > window.innerWidth) {
+      finalLeft = contextMenuRect.left - submenuWidth - 4;
+    }
+    
+    // Adjust if submenu would go off bottom edge
+    if (finalTop + submenuHeight > window.innerHeight) {
+      finalTop = window.innerHeight - submenuHeight - 10;
+    }
+    
+    submenu.style.left = `${finalLeft}px`;
+    submenu.style.top = `${finalTop}px`;
     submenu.classList.remove('hidden');
   }
 }
@@ -4134,7 +4364,7 @@ if (mapContextMenu) {
       e.stopPropagation();
       const action = btn.dataset.mapAction;
       if (action) {
-        showSubmenu(`submenu-${action}`);
+        showSubmenu(`submenu-${action}`, btn);
       }
     });
     
@@ -4211,23 +4441,65 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Close submenus when mouse leaves the context menu area
+// ─── Improved Submenu Hover Handling ───────────────────────────────────────────
+// Add a small delay before hiding submenus to allow smooth mouse transition
+let submenuHideTimeout = null;
+const SUBMENU_HIDE_DELAY = 150; // ms delay to allow mouse to cross gap
+
 if (mapContextMenu) {
+  // Helper function to hide submenus with delay
+  function scheduleSubmenuHide() {
+    if (submenuHideTimeout) clearTimeout(submenuHideTimeout);
+    submenuHideTimeout = setTimeout(() => {
+      // Double-check: only hide if mouse is not over context menu or any submenu
+      if (
+        !mapContextMenu.matches(':hover') && 
+        !document.querySelector('.context-submenu:hover')
+      ) {
+        hideAllSubmenus();
+      }
+    }, SUBMENU_HIDE_DELAY);
+  }
+  
+  // Helper function to cancel hide
+  function cancelSubmenuHide() {
+    if (submenuHideTimeout) {
+      clearTimeout(submenuHideTimeout);
+      submenuHideTimeout = null;
+    }
+  }
+  
+  // Context menu hover handlers
+  mapContextMenu.addEventListener('mouseenter', cancelSubmenuHide);
+  
   mapContextMenu.addEventListener('mouseleave', (e) => {
-    // Only hide submenus if we're not hovering over a submenu itself
+    // Only schedule hide if we're not moving to a submenu
     if (!e.relatedTarget || !e.relatedTarget.closest('.context-submenu')) {
-      hideAllSubmenus();
+      scheduleSubmenuHide();
     }
   });
   
-  // Keep submenus open when hovering over them
+  // Submenu hover handlers - keep open when hovering
   document.querySelectorAll('.context-submenu').forEach(submenu => {
     submenu.addEventListener('mouseenter', () => {
+      cancelSubmenuHide();
       submenu.classList.remove('hidden');
     });
     
     submenu.addEventListener('mouseleave', () => {
-      // Don't immediately hide - let hover over parent keep it open
+      // Schedule hide when leaving submenu
+      scheduleSubmenuHide();
+    });
+  });
+  
+  // Also handle hover on parent menu items with submenus
+  mapContextMenu.querySelectorAll('.context-option--has-submenu').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      cancelSubmenuHide();
+    });
+    
+    btn.addEventListener('mouseleave', () => {
+      // Don't hide immediately - user might be moving to submenu
     });
   });
 }

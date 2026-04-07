@@ -312,16 +312,22 @@ class DataAccessLayer {
   }
 
   createGroundUnit(userId, { name, type = 'truck', lat, lng, hubId = null, speed = 70, battery = 100 }) {
+    const unitName = name !== undefined && name !== null ? String(name) : 'Unknown';
+    const unitType = type !== undefined ? type : 'truck';
+    const unitLat = lat !== undefined ? parseFloat(lat) : 0;
+    const unitLng = lng !== undefined ? parseFloat(lng) : 0;
+    const unitSpeed = speed !== undefined ? parseFloat(speed) : 70;
+    const unitBattery = battery !== undefined ? parseFloat(battery) : 100;
     const result = this.insertEntity('ground_units', userId, {
-      name,
-      type,
-      lat: parseFloat(lat),
-      lng: parseFloat(lng),
-      hub_id: hubId,
-      speed: parseFloat(speed),
-      battery: parseFloat(battery),
+      name: unitName,
+      type: unitType,
+      lat: unitLat,
+      lng: unitLng,
+      hub_id: hubId !== undefined && hubId !== null ? hubId : null,
+      speed: unitSpeed,
+      battery: unitBattery,
       status: 'idle',
-      on_road: false,
+      on_road: 0,
       current_path: '[]',
       path_index: 0
     });

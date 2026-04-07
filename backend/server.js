@@ -92,6 +92,25 @@ if (!fs.existsSync(DATA_DIR)) {
 const db = new Database(DB_PATH);
 db.pragma('foreign_keys = ON');
 
+// Run radio tower migration if not already applied
+try {
+  const migrationExists = db.prepare("SELECT 1 FROM migrations WHERE name = '002_add_radio_tower_support'").get();
+  if (!migrationExists) {
+    console.log('🔄 Applying radio tower migration...');
+    db.exec(`
+      ALTER TABLE ground_units ADD COLUMN is_radio_tower INTEGER DEFAULT 0;
+      ALTER TABLE ground_units ADD COLUMN radio_range_meters REAL DEFAULT 500;
+      ALTER TABLE ground_units ADD COLUMN radio_effects TEXT DEFAULT '{"drones":{"speedBoost":1.2,"batteryEfficiency":1.1},"ground":{"speedBoost":1.15,"accuracyBoost":1.2},"naval":{"speedBoost":1.1,"commsRangeBoost":1.3},"radio":{"rangeExtension":1.5,"powerBoost":1.2}}';
+      ALTER TABLE ground_units ADD COLUMN radio_active INTEGER DEFAULT 1;
+      CREATE INDEX IF NOT EXISTS idx_ground_units_radio_towers ON ground_units(user_id, is_radio_tower);
+      INSERT INTO migrations (name) VALUES ('002_add_radio_tower_support');
+    `);
+    console.log('✅ Radio tower migration applied');
+  }
+} catch (err) {
+  console.log('⚠️  Radio tower migration check:', err.message);
+}
+
 // Create tables (for new installations)
 db.exec(`
   -- Users table
@@ -321,6 +340,88 @@ db.exec(`
 
 // Initialize data access layer
 const dal = new DataAccessLayer(db);
+
+// ─── Default Water Areas Setup ──────────────────────────────────────────────────
+// Add default water areas for Stockholm archipelago if none exist
+function setupDefaultWaterAreas() {
+  const userId = 1; // Use first user or dev user
+  
+  // Check if any water areas already exist
+  const existingAreas = db.prepare('SELECT COUNT(*) as count FROM water_areas').get();
+  
+  if (existingAreas.count === 0) {
+    console.log('[Server] Setting up default water areas for Stockholm archipelago...');
+    
+    // Default water areas covering Stockholm's main water regions
+    // These are approximate polygons covering the Baltic Sea and surrounding waters
+    const defaultWaterAreas = [
+      {
+        name: 'Stockholm Archipelago - Main Waters',
+        coordinates: JSON.stringify([
+          // Northern boundary
+          [59.45, 18.0],
+          [59.45, 18.6],
+          // Eastern boundary (Baltic Sea)
+          [59.35, 18.75],
+          [59.25, 18.7],
+          [59.15, 18.65],
+          // Southern boundary
+          [59.1, 18.5],
+          [59.1, 18.2],
+          [59.1, 18.0],
+          // Western boundary
+          [59.15, 17.9],
+          [59.25, 17.85],
+          [59.35, 17.9],
+          [59.4, 17.95],
+          // Back to start
+          [59.45, 18.0]
+        ])
+      },
+      {
+        name: 'Saltsjön Bay',
+        coordinates: JSON.stringify([
+          [59.35, 18.1],
+          [59.35, 18.25],
+          [59.32, 18.28],
+          [59.3, 18.25],
+          [59.29, 18.2],
+          [59.3, 18.15],
+          [59.35, 18.1]
+        ])
+      },
+      {
+        name: 'Riddarfjärden Lake',
+        coordinates: JSON.stringify([
+          [59.335, 18.05],
+          [59.335, 18.1],
+          [59.325, 18.12],
+          [59.32, 18.1],
+          [59.32, 18.05],
+          [59.325, 18.03],
+          [59.335, 18.05]
+        ])
+      }
+    ];
+    
+    const insertStmt = db.prepare(`
+      INSERT INTO water_areas (user_id, name, coordinates, created_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    
+    for (const area of defaultWaterAreas) {
+      try {
+        insertStmt.run(userId, area.name, area.coordinates);
+        console.log(`[Server] Created water area: ${area.name}`);
+      } catch (err) {
+        console.error(`[Server] Error creating water area ${area.name}:`, err.message);
+      }
+    }
+  }
+}
+
+// Setup default water areas
+setupDefaultWaterAreas();
 
 // ─── In-memory stores for simulations and SSE ─────────────────────────────────
 const simulations = new Map(); // id → { droneId, targetLat, targetLng, speed, intervalId }
